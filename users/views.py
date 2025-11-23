@@ -226,16 +226,29 @@ class OTPVerifyView(APIView):
             otp.used_at = timezone.now()
             otp.save()
             
+            # Set session variables for registration flow
+            request.session['phone_verified'] = True
+            request.session['verified_phone'] = str(phone_number)
+            request.session.set_expiry(300)  # 5 minutes expiry
+            request.session.save()  # Explicitly save the session
+            
             # Log successful verification
             AuditLog.log_action(
                 action='otp_verified',
                 user=None,
                 ip_address=request.META.get('REMOTE_ADDR'),
                 user_agent=request.META.get('HTTP_USER_AGENT'),
-                data={'phone_number': str(phone_number), 'purpose': purpose}
+                data={
+                    'phone_number': str(phone_number), 
+                    'purpose': purpose,
+                    'session_id': request.session.session_key
+                }
             )
             
-            return Response({"detail": "OTP verified successfully"})
+            return Response({
+                "detail": "OTP verified successfully",
+                "session_id": request.session.session_key  # For debugging
+            })
             
         except OTP.DoesNotExist:
             return Response(
