@@ -134,7 +134,8 @@ class OTPRequestView(APIView):
         
         return Response({
             "detail": "OTP sent successfully",
-            "expires_in": 300  # 5 minutes
+            "expires_in": 300,  # 5 minutes
+            "otp": otp.code  # Include OTP in response for development
         })
     
     def get_client_ip(self, request):
