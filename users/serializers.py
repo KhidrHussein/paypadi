@@ -49,12 +49,18 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         allow_blank=True,
         write_only=True
     )
+    role = serializers.ChoiceField(
+        choices=User.UserRole.choices,
+        default=User.UserRole.RIDER,
+        write_only=True,
+        required=False
+    )
     
     class Meta:
         model = User
         fields = [
             'phone_number', 'password', 'first_name', 'last_name', 'email',
-            'referred_by'
+            'referred_by', 'role'
         ]
     
     def create(self, validated_data):
@@ -62,12 +68,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         Create and return a new user instance, given the validated data.
         """
         referred_by_code = validated_data.pop('referred_by', None)
+        role = validated_data.pop('role', User.UserRole.RIDER)
+        
         user = User.objects.create_user(
             phone_number=validated_data['phone_number'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            email=validated_data.get('email', '')
+            email=validated_data.get('email', ''),
+            role=role
         )
         
         # Handle referral if provided

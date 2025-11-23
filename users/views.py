@@ -291,7 +291,8 @@ class UserRegistrationView(APIView):
         "password": "securepassword123",
         "first_name": "John",
         "last_name": "Doe",
-        "email": "john.doe@example.com"
+        "email": "john.doe@example.com",
+        "role": "rider"  # or "driver"
     }
     ```
     

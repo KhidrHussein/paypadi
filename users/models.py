@@ -16,6 +16,10 @@ class UserManager(BaseUserManager):
         if not phone_number:
             raise ValueError('The Phone Number must be set')
         
+        # Set default role to RIDER if not provided
+        if 'role' not in extra_fields:
+            extra_fields['role'] = self.model.UserRole.RIDER
+            
         user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
