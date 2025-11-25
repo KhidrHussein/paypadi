@@ -42,8 +42,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         write_only=True,
         required=True,
         style={'input_type': 'password'},
-        min_length=8
+        min_length=6,
+        max_length=6,
+        help_text="Must be a 6-digit number"
     )
+    
+    def validate_password(self, value):
+        """Validate that the password is a 6-digit number."""
+        if not value.isdigit():
+            raise serializers.ValidationError("Password must be a 6-digit number")
+        return value
     referred_by = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -175,9 +183,17 @@ class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(
         required=True,
-        min_length=8,
-        style={'input_type': 'password'}
+        min_length=6,
+        max_length=6,
+        style={'input_type': 'password'},
+        help_text="Must be a 6-digit number"
     )
+    
+    def validate_new_password(self, value):
+        """Validate that the new password is a 6-digit number."""
+        if not value.isdigit():
+            raise serializers.ValidationError("Password must be a 6-digit number")
+        return value
 
 
 class SetTransactionPinSerializer(serializers.Serializer):
