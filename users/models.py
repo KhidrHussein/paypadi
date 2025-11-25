@@ -223,6 +223,49 @@ class UserProfile(models.Model):
         return f"{self.user.get_full_name()}'s Profile"
 
 
+class DriverPayoutAccount(models.Model):
+    """Model to store driver's payout account information."""
+    
+    class AccountType(models.TextChoices):
+        BANK_ACCOUNT = 'bank_account', 'Bank Account'
+        MOBILE_MONEY = 'mobile_money', 'Mobile Money'
+    
+    driver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='payout_accounts'
+    )
+    account_type = models.CharField(
+        max_length=20,
+        choices=AccountType.choices,
+        default=AccountType.BANK_ACCOUNT
+    )
+    account_name = models.CharField(max_length=255)
+    account_number = models.CharField(max_length=50)
+    bank_name = models.CharField(max_length=100, blank=True, null=True)
+    bank_code = models.CharField(max_length=20, blank=True, null=True)
+    is_primary = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('driver', 'account_number', 'bank_code')
+        ordering = ['-is_primary', '-created_at']
+
+    def __str__(self):
+        return f"{self.account_name} - {self.account_number} ({self.get_account_type_display()})"
+
+    def save(self, *args, **kwargs):
+        # Ensure only one primary account per driver
+        if self.is_primary:
+            self.__class__._default_manager.filter(
+                driver=self.driver, 
+                is_primary=True
+            ).exclude(pk=self.pk).update(is_primary=False)
+        super().save(*args, **kwargs)
+
+
 class DriverProfile(models.Model):
     """Extended profile for drivers."""
     
@@ -231,12 +274,12 @@ class DriverProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='driver_profile'
     )
-    vehicle_make = models.CharField(max_length=100)
-    vehicle_model = models.CharField(max_length=100)
-    vehicle_year = models.PositiveIntegerField()
-    license_plate = models.CharField(max_length=20, unique=True)
-    driver_license_number = models.CharField(max_length=50, unique=True)
-    driver_license_expiry = models.DateField()
+    vehicle_make = models.CharField(max_length=100, blank=True, null=True)
+    vehicle_model = models.CharField(max_length=100, blank=True, null=True)
+    vehicle_year = models.PositiveIntegerField(blank=True, null=True)
+    license_plate = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    driver_license_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
+    driver_license_expiry = models.DateField(blank=True, null=True)
     is_approved = models.BooleanField(default=False)
     is_available = models.BooleanField(default=True)
     current_location_lat = models.DecimalField(

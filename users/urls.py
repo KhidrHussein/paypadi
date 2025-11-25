@@ -1,9 +1,10 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from .api_views.auth_views import UserLoginView
 
 router = DefaultRouter()
+router.register(r'driver/payout-accounts', views.DriverPayoutAccountViewSet, basename='payout-account')
 
 urlpatterns = [
     # User registration and authentication
@@ -28,6 +29,9 @@ urlpatterns = [
     
     # Current user info
     path('me/', views.CurrentUserView.as_view(), name='current-user'),
+    
+    # Include router URLs
+    path('', include(router.urls)),
 ]
 
 # Include router URLs if any

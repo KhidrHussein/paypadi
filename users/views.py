@@ -10,12 +10,14 @@ from django.core.cache import cache
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 
-from .models import User, OTP, UserProfile, DriverProfile
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from .models import User, OTP, UserProfile, DriverProfile, DriverPayoutAccount
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, OTPSerializer,
     OTPRequestSerializer, OTPVerifySerializer, UserProfileSerializer,
     DriverProfileSerializer, UserDetailSerializer, ChangePasswordSerializer,
-    SetTransactionPinSerializer
+    SetTransactionPinSerializer, DriverPayoutAccountSerializer
 )
 from core.models import AuditLog
 
@@ -884,3 +886,43 @@ class CurrentUserView(APIView):
     def get(self, request):
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
+
+
+class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing driver payout accounts."""
+    serializer_class = DriverPayoutAccountSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only return payout accounts for the current user
+        return self.request.user.payout_accounts.all()
+
+    def perform_create(self, serializer):
+        # Automatically set the driver to the current user
+        serializer.save(driver=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def set_primary(self, request, pk=None):
+        """Set an account as primary."""
+        account = self.get_object()
+        
+        # Ensure the account belongs to the current user
+        if account.driver != request.user:
+            raise PermissionDenied("You don't have permission to modify this account.")
+        
+        # Set the account as primary
+        account.is_primary = True
+        account.save()
+        
+        return Response({'status': 'primary account set'})
+
+    @action(detail=True, methods=['post'])
+    def verify(self, request, pk=None):
+        """Verify a payout account (admin only)."""
+        if not request.user.is_staff:
+            raise PermissionDenied("Only administrators can verify accounts")
+        
+        account = self.get_object()
+        account.is_verified = True
+        account.save()
+        return Response({'status': 'account verified'})

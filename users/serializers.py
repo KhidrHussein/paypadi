@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from phonenumber_field.serializerfields import PhoneNumberField
 from django.contrib.auth import get_user_model
-from .models import OTP, UserProfile, DriverProfile
+from .models import OTP, UserProfile, DriverProfile, DriverPayoutAccount
 
 User = get_user_model()
 
@@ -27,6 +27,29 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_active', 'verified_phone', 'date_joined', 'role']
 
 
+class DriverPayoutAccountSerializer(serializers.ModelSerializer):
+    """Serializer for driver payout accounts."""
+    
+    class Meta:
+        model = DriverPayoutAccount
+        fields = [
+            'id', 'account_type', 'account_name', 'account_number',
+            'bank_name', 'bank_code', 'is_primary', 'is_verified',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
+    
+    def validate(self, data):
+        # If it's a bank account, bank_name and bank_code are required
+        if data.get('account_type') == 'bank_account':
+            if not data.get('bank_name') or not data.get('bank_code'):
+                raise serializers.ValidationError({
+                    'bank_name': 'Bank name is required for bank accounts',
+                    'bank_code': 'Bank code is required for bank accounts'
+                })
+        return data
+
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration."""
     phone_number = PhoneNumberField(
@@ -45,6 +68,32 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         min_length=6,
         max_length=6,
         help_text="Must be a 6-digit number"
+    )
+    
+    # Driver-specific fields
+    vehicle_make = serializers.CharField(
+        write_only=True, 
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+    vehicle_model = serializers.CharField(
+        write_only=True, 
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+    license_plate = serializers.CharField(
+        write_only=True, 
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+    driver_license_number = serializers.CharField(
+        write_only=True, 
+        required=False,
+        allow_blank=True,
+        allow_null=True
     )
     
     def validate_password(self, value):
@@ -68,15 +117,24 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'phone_number', 'password', 'first_name', 'last_name', 'email',
-            'referred_by', 'role'
+            'referred_by', 'role', 'vehicle_make', 'vehicle_model', 
+            'license_plate', 'driver_license_number'
         ]
     
     def create(self, validated_data):
         """
         Create and return a new user instance, given the validated data.
         """
+        # Extract driver-specific data
+        driver_data = {
+            'vehicle_make': validated_data.pop('vehicle_make', None),
+            'vehicle_model': validated_data.pop('vehicle_model', None),
+            'license_plate': validated_data.pop('license_plate', None),
+            'driver_license_number': validated_data.pop('driver_license_number', None)
+        }
+        
         referred_by_code = validated_data.pop('referred_by', None)
-        role = validated_data.pop('role', User.UserRole.RIDER)
+        role = validated_data.get('role', User.UserRole.RIDER)
         
         user = User.objects.create_user(
             phone_number=validated_data['phone_number'],
@@ -86,6 +144,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             email=validated_data.get('email', ''),
             role=role
         )
+        
+        # If user is a driver, create driver profile with provided data
+        if role == User.UserRole.DRIVER:
+            DriverProfile.objects.create(
+                user=user,
+                **{k: v for k, v in driver_data.items() if v is not None}
+            )
         
         # Handle referral if provided
         if referred_by_code:
