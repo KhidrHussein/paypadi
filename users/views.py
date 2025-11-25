@@ -1,5 +1,6 @@
 import logging
 from rest_framework import status, permissions, generics, viewsets, serializers
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -10,8 +11,10 @@ from django.core.cache import cache
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 
+import requests
+from django.conf import settings
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from .models import User, OTP, UserProfile, DriverProfile, DriverPayoutAccount
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, OTPSerializer,
@@ -892,6 +895,45 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
     """ViewSet for managing driver payout accounts."""
     serializer_class = DriverPayoutAccountSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def _verify_bank_account(self, account_number, bank_code):
+        """Verify bank account details using Paystack API."""
+        paystack_secret_key = settings.PAYSTACK_SECRET_KEY
+        headers = {
+            'Authorization': f'Bearer {paystack_secret_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            # First, resolve the account number to get the account name
+            resolve_url = 'https://api.paystack.co/bank/resolve'
+            params = {
+                'account_number': account_number,
+                'bank_code': bank_code
+            }
+            
+            response = requests.get(resolve_url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('status') and data.get('data'):
+                return {
+                    'account_name': data['data']['account_name'],
+                    'bank_code': bank_code,
+                    'account_number': account_number
+                }
+            
+            raise ValidationError("Unable to verify bank account details")
+            
+        except requests.exceptions.RequestException as e:
+            error_message = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', str(e))
+                except ValueError:
+                    error_message = e.response.text or str(e)
+            raise ValidationError(f"Bank account verification failed: {error_message}")
 
     def get_queryset(self):
         # Only return payout accounts for the current user
@@ -900,6 +942,30 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Automatically set the driver to the current user
         serializer.save(driver=self.request.user)
+        
+    def create(self, request, *args, **kwargs):
+        # For bank accounts, verify the account details with Paystack
+        account_type = request.data.get('account_type')
+        bank_code = request.data.get('bank_code')
+        account_number = request.data.get('account_number')
+        
+        if account_type == 'bank_account' and bank_code and account_number:
+            try:
+                # Verify the bank account
+                account_info = self._verify_bank_account(account_number, bank_code)
+                
+                # Update the request data with the verified account name
+                request.data._mutable = True
+                request.data['account_name'] = account_info['account_name']
+                request.data['is_verified'] = True
+                
+            except ValidationError as e:
+                return Response(
+                    {'detail': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
     def set_primary(self, request, pk=None):
@@ -926,3 +992,60 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
         account.is_verified = True
         account.save()
         return Response({'status': 'account verified'})
+        
+    @action(detail=False, methods=['get'])
+    def list_banks(self, request):
+        """
+        List all supported banks from Paystack.
+        This endpoint returns a list of banks that can be used for bank account verification.
+        """
+        paystack_secret_key = settings.PAYSTACK_SECRET_KEY
+        headers = {
+            'Authorization': f'Bearer {paystack_secret_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            # Fetch banks from Paystack
+            response = requests.get(
+                'https://api.paystack.co/bank',
+                headers=headers,
+                params={'currency': 'NGN'}  # Filter for Nigerian banks
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('status') and data.get('data'):
+                # Return a simplified version of the bank data
+                banks = [{
+                    'name': bank['name'],
+                    'code': bank['code'],
+                    'active': bank['active']
+                } for bank in data['data']]
+                
+                return Response({
+                    'status': True,
+                    'message': 'Banks retrieved successfully',
+                    'data': banks
+                })
+                
+            return Response({
+                'status': False,
+                'message': 'No banks found',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        except requests.exceptions.RequestException as e:
+            error_message = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', str(e))
+                except ValueError:
+                    error_message = e.response.text or str(e)
+            
+            return Response({
+                'status': False,
+                'message': f'Failed to fetch banks: {error_message}',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
