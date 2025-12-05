@@ -364,8 +364,8 @@ class UserRegistrationView(APIView):
                 # Generate tokens
                 refresh = RefreshToken.for_user(user)
                 
-                # Create user profile
-                UserProfile.objects.create(user=user)
+                # Create user profile - Handled by post_save signal
+                # UserProfile.objects.create(user=user)
                 
                 # Log the registration
                 AuditLog.log_action(
