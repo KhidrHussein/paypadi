@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
-from .models import Wallet, Transaction, Beneficiary, TransactionStatus
+from .models import Wallet, Transaction, Beneficiary, TransactionStatus, TransactionType
 from users.models import User
 from django.core.validators import MinValueValidator
 from django.utils import timezone
@@ -260,7 +260,7 @@ class PaymentInitiationSerializer(serializers.Serializer):
         validators=[MinValueValidator(Decimal('0.01'))]
     )
     transaction_type = serializers.ChoiceField(
-        choices=TransactionStatus.choices,
+        choices=TransactionType.choices,
         required=True
     )
     description = serializers.CharField(
@@ -275,7 +275,7 @@ class PaymentInitiationSerializer(serializers.Serializer):
     
     def validate_transaction_type(self, value):
         """Validate transaction type."""
-        if value not in [TransactionStatus.DEPOSIT, TransactionStatus.TRANSFER]:
+        if value not in [TransactionType.DEPOSIT, TransactionType.TRANSFER]:
             raise serializers.ValidationError(
                 "Invalid transaction type. Must be 'deposit' or 'transfer'."
             )
@@ -314,7 +314,7 @@ class TransactionQuerySerializer(serializers.Serializer):
         help_text="Filter by transaction status"
     )
     transaction_type = serializers.ChoiceField(
-        choices=TransactionStatus.choices,
+        choices=TransactionType.choices,
         required=False,
         allow_null=True,
         help_text="Filter by transaction type"

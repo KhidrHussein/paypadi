@@ -993,8 +993,8 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
         account.save()
         return Response({'status': 'account verified'})
         
-    @action(detail=False, methods=['get'])
-    def list_banks(self, request):
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def list_banks(self, request):        
         """
         List all supported banks from Paystack.
         This endpoint returns a list of banks that can be used for bank account verification.

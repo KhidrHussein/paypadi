@@ -7,6 +7,8 @@ from rest_framework.decorators import action
 from django.db import transaction
 from django.utils import timezone
 from django.core.cache import cache
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from .models import Wallet, Transaction, Beneficiary
 from .serializers import (
@@ -14,7 +16,7 @@ from .serializers import (
     BankAccountVerificationSerializer, TransferFundsSerializer
 )
 from core.models import AuditLog, Notification
-from users.models import User
+from users.models import User, DriverPayoutAccount
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +326,16 @@ class DepositFundsView(APIView):
     """View to initiate a deposit into the user's wallet."""
     permission_classes = [permissions.IsAuthenticated]
     
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'amount': openapi.Schema(type=openapi.TYPE_NUMBER, description='Amount to deposit'),
+            },
+            required=['amount']
+        ),
+        responses={200: 'Deposit initiated', 400: 'Bad Request'}
+    )
     def post(self, request):
         amount = request.data.get('amount')
         
@@ -385,8 +397,22 @@ class WithdrawFundsView(APIView):
     """View to initiate a withdrawal from the user's wallet."""
     permission_classes = [permissions.IsAuthenticated]
     
+    @swagger_auto_schema(
+        request_body=TransferFundsSerializer,
+        responses={200: 'Withdrawal completed', 400: 'Bad Request'}
+    )
     def post(self, request):
-        serializer = TransferFundsSerializer(data=request.data)
+        # Check for default payout account if details are missing
+        data = request.data.copy()
+        if not (data.get('recipient_account_number') and data.get('recipient_bank_code')):
+            # Check if user is a driver (assuming 'driver' is the stored value for UserRole.DRIVER)
+            if hasattr(request.user, 'role') and request.user.role == 'driver':
+                payout_account = DriverPayoutAccount.objects.filter(driver=request.user, is_primary=True).first()
+                if payout_account:
+                    data['recipient_account_number'] = payout_account.account_number
+                    data['recipient_bank_code'] = payout_account.bank_code
+
+        serializer = TransferFundsSerializer(data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         

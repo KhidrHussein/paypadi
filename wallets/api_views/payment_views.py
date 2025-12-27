@@ -5,11 +5,13 @@ import logging
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import permission_classes, api_view
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import transaction
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from ..models import Transaction, Wallet
 from ..serializers import (
@@ -33,6 +35,10 @@ class PaymentInitiationView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        request_body=PaymentInitiationSerializer,
+        responses={200: 'Payment initiated', 400: 'Bad Request'}
+    )
     def post(self, request):
         """Initiate a payment."""
         serializer = PaymentInitiationSerializer(data=request.data)
@@ -64,6 +70,40 @@ class PaymentInitiationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+class PaymentVerificationView(APIView):
+    """
+    API view for checking payment status (callback).
+    """
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('reference', openapi.IN_PATH, description="Transaction Reference", type=openapi.TYPE_STRING),
+        ],
+        responses={200: 'Payment verified', 400: 'Verification failed'}
+    )
+    def get(self, request, reference):
+        """Verify a payment via callback."""
+        try:
+            payment_service = PaymentService()
+            result = payment_service.verify_payment(reference)
+            
+            # In a real app, you might redirect to a frontend success page
+            # return redirect(f"https://frontend.com/payment/status?ref={reference}")
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except PaymentError as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in payment verification: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'An error occurred while verifying the payment.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class TransferFundsView(APIView):
     """
@@ -71,6 +111,10 @@ class TransferFundsView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        request_body=TransferFundsSerializer,
+        responses={200: 'Transfer successful', 400: 'Bad Request'}
+    )
     def post(self, request):
         """Transfer funds to another account."""
         serializer = TransferFundsSerializer(data=request.data)
@@ -121,8 +165,12 @@ class VerifyBankAccountView(APIView):
     """
     API view for verifying bank account details.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        request_body=BankAccountVerificationSerializer,
+        responses={200: 'Account verified', 400: 'Verification failed'}
+    )
     def post(self, request):
         """Verify a bank account."""
         serializer = BankAccountVerificationSerializer(data=request.data)
@@ -203,6 +251,13 @@ class TransactionHistoryView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        responses={200: TransactionSerializer(many=True)},
+        manual_parameters=[
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Page size", type=openapi.TYPE_INTEGER),
+        ]
+    )
     def get(self, request):
         """Get transaction history for the authenticated user."""
         try:

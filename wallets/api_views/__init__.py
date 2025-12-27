@@ -8,6 +8,7 @@ including transactions, transfers, and payment processing.
 # Import views to make them available at the package level
 from .payment_views import (
     PaymentInitiationView,
+    PaymentVerificationView,
     TransferFundsView,
     VerifyBankAccountView,
     PaymentWebhookView,
@@ -16,6 +17,7 @@ from .payment_views import (
 
 __all__ = [
     'PaymentInitiationView',
+    'PaymentVerificationView',
     'TransferFundsView',
     'VerifyBankAccountView',
     'PaymentWebhookView',
