@@ -138,6 +138,11 @@ class PaymentService:
                 transaction.metadata['verification_error'] = result.get('message', 'Verification failed')
                 transaction.save(update_fields=['status', 'metadata'])
                 
+                # Refund if it was a transfer (funds were deducted at initiation)
+                if transaction.transaction_type == Transaction.TransactionType.TRANSFER:
+                    transaction.wallet.balance += transaction.amount
+                    transaction.wallet.save(update_fields=['balance'])
+                
                 return {
                     'status': False,
                     'message': result.get('message', 'Payment verification failed'),
@@ -153,16 +158,14 @@ class PaymentService:
             
             if gateway_status == TransactionStatus.SUCCESSFUL:
                 transaction.status = Transaction.TransactionStatus.COMPLETED
-                transaction.completed_at = timezone.now()
+                transaction.metadata['completed_at'] = str(timezone.now())
                 
-                # Update wallet balance for successful payments
-                if transaction.transaction_type in [Transaction.TransactionType.DEPOSIT, 
-                                                 Transaction.TransactionType.TRANSFER]:
-                    if transaction.transaction_type == Transaction.TransactionType.DEPOSIT:
-                        transaction.wallet.balance += transaction.amount
+                # Update wallet balance for successful deposits
+                if transaction.transaction_type == Transaction.TransactionType.DEPOSIT:
+                    transaction.wallet.balance += transaction.amount
                     transaction.wallet.save(update_fields=['balance'])
                 
-                transaction.save(update_fields=['status', 'completed_at'])
+                transaction.save(update_fields=['status', 'metadata'])
                 
                 return {
                     'status': True,
@@ -177,6 +180,11 @@ class PaymentService:
             elif gateway_status == TransactionStatus.FAILED:
                 transaction.status = Transaction.TransactionStatus.FAILED
                 transaction.save(update_fields=['status'])
+                
+                # Refund if it was a transfer (funds were deducted at initiation)
+                if transaction.transaction_type == Transaction.TransactionType.TRANSFER:
+                    transaction.wallet.balance += transaction.amount
+                    transaction.wallet.save(update_fields=['balance'])
                 
                 return {
                     'status': False,
@@ -253,6 +261,10 @@ class PaymentService:
                 }
             )
             
+            # Deduct funds immediately to prevent double spending
+            wallet.balance -= amount
+            wallet.save(update_fields=['balance'])
+            
             try:
                 # Initiate transfer with payment gateway
                 result = self.gateway.transfer_funds(
@@ -271,22 +283,17 @@ class PaymentService:
                 
                 # Update transaction with gateway reference if available
                 if 'data' in result and 'reference' in result['data']:
-                    transaction.gateway_reference = result['data']['reference']
+                    transaction.metadata['gateway_reference'] = result['data']['reference']
                 
                 # If transfer was immediately successful
                 if result.get('data', {}).get('status', '').lower() == TransactionStatus.SUCCESSFUL:
                     transaction.status = Transaction.TransactionStatus.COMPLETED
-                    transaction.completed_at = timezone.now()
-                    
-                    # Deduct from sender's wallet
-                    wallet.balance -= amount
-                    wallet.save(update_fields=['balance'])
+                    transaction.metadata['completed_at'] = str(timezone.now())
+                    # Balance already deducted
                 
                 transaction.save(
                     update_fields=[
                         'status', 
-                        'completed_at', 
-                        'gateway_reference',
                         'metadata'
                     ]
                 )
@@ -308,6 +315,11 @@ class PaymentService:
                 transaction.status = Transaction.TransactionStatus.FAILED
                 transaction.metadata['error'] = str(e)
                 transaction.save(update_fields=['status', 'metadata'])
+                
+                # Refund balance since transfer failed
+                wallet.balance += amount
+                wallet.save(update_fields=['balance'])
+                
                 raise PaymentError(f"Failed to initiate transfer: {str(e)}")
     
     def verify_bank_account(

@@ -3,6 +3,8 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 
+import phonenumbers
+
 User = get_user_model()
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -14,8 +16,24 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     
     def validate(self, attrs):
         # Replace the username field with phone_number
-        attrs['phone_number'] = attrs.pop('username', '')
+        if 'username' in attrs:
+            attrs['phone_number'] = attrs.pop('username')
         
+        # Normalize phone number
+        phone_number = attrs.get('phone_number')
+        if phone_number:
+            try:
+                # Parse the phone number
+                parsed_number = phonenumbers.parse(phone_number, "NG")  # Default to NG region
+                if phonenumbers.is_valid_number(parsed_number):
+                    # Format to E.164 (e.g., +2348012345678)
+                    attrs['phone_number'] = phonenumbers.format_number(
+                        parsed_number, 
+                        phonenumbers.PhoneNumberFormat.E164
+                    )
+            except phonenumbers.NumberParseException:
+                pass  # Use original input if parsing fails
+
         # Check if the user exists and is active
         try:
             user = User.objects.get(phone_number=attrs['phone_number'])
@@ -40,6 +58,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             )
         
         # Validate credentials
+        to_validate = attrs.copy()
+        if 'phone_number' in to_validate and 'username' not in to_validate:
+             # TokenObtainPairSerializer might expect username, so we map it back or rely on custom backend
+             # But here we are calling super().validate(attrs). 
+             # super() uses self.username_field which is 'phone_number' (we set it).
+             pass
+             
         data = super().validate(attrs)
         
         # Add custom claims
@@ -70,20 +95,19 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
-class CustomTokenRefreshSerializer(serializers.Serializer):
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+
+class CustomTokenRefreshSerializer(TokenRefreshSerializer):
     """
     Custom token refresh serializer that includes user data in the response.
     """
-    refresh = serializers.CharField()
-    access = serializers.CharField(read_only=True)
-    token_class = None
     
     def validate(self, attrs):
+        data = super().validate(attrs)
         refresh = self.token_class(attrs["refresh"])
-        data = {"access": str(refresh.access_token)}
         
         # Add user data to the response
-        if hasattr(refash, 'user'):
+        if hasattr(refresh, 'user'):
             user = refresh.user
             data['user'] = {
                 'id': user.id,

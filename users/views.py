@@ -775,7 +775,7 @@ class SetTransactionPinView(APIView):
         user = request.user
         
         # If user already has a PIN, require current PIN
-        if user.transaction_pin and not user.check_transaction_pin(serializer.validated_data.get('current_pin', '')):
+        if user.transaction_pin_hash and not user.check_transaction_pin(serializer.validated_data.get('current_pin', '')):
             return Response(
                 {"current_pin": ["Incorrect current PIN"]},
                 status=status.HTTP_400_BAD_REQUEST
