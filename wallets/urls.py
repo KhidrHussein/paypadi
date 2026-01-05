@@ -8,7 +8,9 @@ from .api_views import (
     VerifyBankAccountView,
     PaymentVerificationView,
     PaymentWebhookView,
-    TransactionHistoryView
+    TransactionHistoryView,
+    UserLookupView,
+    DepositAccountView
 )
 from .views_paystack import paystack_webhook
 
@@ -32,6 +34,8 @@ urlpatterns = [
     # Fund transfer endpoints
     path('transfer/', TransferFundsView.as_view(), name='transfer-funds'),
     path('deposit/', views.DepositFundsView.as_view(), name='deposit-funds'),
+    path('deposit/account/', DepositAccountView.as_view(), name='deposit-account'),
+    path('payments/lookup/', UserLookupView.as_view(), name='user-lookup'),
     path('withdraw/', views.WithdrawFundsView.as_view(), name='withdraw-funds'),
     
     # Bank account verification

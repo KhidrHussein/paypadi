@@ -207,3 +207,55 @@ class PaystackGateway:
             'status': False,
             'message': f'Unhandled event: {event}'
         }
+    def create_customer(self, user) -> Dict:
+        """Create or fetch a customer on Paystack."""
+        email = user.email or f"{user.phone_number}@paypadi.ng"
+        data = {
+            'email': email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'phone': str(user.phone_number),
+            'metadata': {
+                'user_id': str(user.id),
+                'role': user.role
+            }
+        }
+        
+        response = self._make_request('POST', '/customer', data)
+        
+        if response.get('status'):
+            return {
+                'status': True,
+                'message': 'Customer created/fetched successfully',
+                'data': {
+                    'customer_code': response['data']['customer_code'],
+                    'id': response['data']['id'],
+                    'email': response['data']['email']
+                }
+            }
+        return response
+
+    def create_virtual_account(self, customer_code: str, preferred_bank: str = 'wema-bank') -> Dict:
+        """Create a dedicated virtual account for a customer."""
+        data = {
+            'customer': customer_code,
+            'preferred_bank': preferred_bank
+        }
+        
+        response = self._make_request('POST', '/dedicated_account', data)
+        
+        if response.get('status'):
+            account = response['data']
+            return {
+                'status': True,
+                'message': 'Virtual account created successfully',
+                'data': {
+                    'account_number': account.get('account_number'),
+                    'account_name': account.get('account_name'),
+                    'bank_name': account.get('bank', {}).get('name'),
+                    'bank_code': account.get('bank', {}).get('slug') or account.get('bank', {}).get('code'),
+                    'currency': account.get('currency', 'NGN'),
+                    'assigned': True
+                }
+            }
+        return response

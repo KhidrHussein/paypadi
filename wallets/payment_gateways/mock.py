@@ -130,3 +130,32 @@ class MockPaymentGateway(PaymentGateway):
                 'verified': True
             }
         }
+
+    def create_customer(self, user) -> Dict[str, Any]:
+        """Mock customer creation."""
+        import uuid
+        return {
+            'status': True,
+            'message': 'Customer created',
+            'data': {
+                'customer_code': f"CUS_{uuid.uuid4().hex[:8]}",
+                'id': 12345,
+                'email': user.email or f"{user.phone_number}@paypadi.ng"
+            }
+        }
+
+    def create_virtual_account(self, customer_code: str, preferred_bank: str = 'wema-bank') -> Dict[str, Any]:
+        """Mock virtual account creation."""
+        import random
+        return {
+            'status': True,
+            'message': 'Virtual account created',
+            'data': {
+                'account_number': f"99{random.randint(10000000, 99999999)}",
+                'account_name': 'Test User Virtual',
+                'bank_name': 'Wema Bank',
+                'bank_code': '035',
+                'currency': 'NGN',
+                'assigned': True
+            }
+        }

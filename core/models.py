@@ -162,6 +162,7 @@ class OTPManager:
     def create_otp(cls, phone_number, purpose, expiry_minutes=5):
         """Create a new OTP for the given phone number and purpose."""
         from users.models import OTP
+        from core.sms import send_sms
         
         # Invalidate any existing OTPs for this phone and purpose
         OTP.objects.filter(
@@ -172,14 +173,17 @@ class OTPManager:
         ).update(is_used=True)
         
         # Create new OTP
+        otp_code = cls.generate_otp()
         otp = OTP.objects.create(
             phone_number=phone_number,
             purpose=purpose,
-            code=cls.generate_otp(),
+            code=otp_code,
             expires_at=timezone.now() + timedelta(minutes=expiry_minutes)
         )
         
-        # TODO: Send OTP via SMS or other channels
+        # Send OTP via SMS
+        message = f"Your Paypadi OTP is: {otp_code}. Valid for {expiry_minutes} minutes."
+        send_sms(phone_number, message)
         
         return otp
     

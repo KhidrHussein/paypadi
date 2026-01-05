@@ -53,9 +53,14 @@ class Wallet(models.Model):
         default='NGN',
         help_text="ISO 4217 currency code"
     )
-    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Virtual Account Details
+    virtual_account_number = models.CharField(max_length=50, blank=True, null=True)
+    virtual_bank_name = models.CharField(max_length=100, blank=True, null=True)
+    virtual_account_name = models.CharField(max_length=255, blank=True, null=True)
+    virtual_bank_code = models.CharField(max_length=20, blank=True, null=True)
     
     class Meta:
         ordering = ['-created_at']

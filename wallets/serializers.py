@@ -344,3 +344,20 @@ class TransactionQuerySerializer(serializers.Serializer):
             })
             
         return attrs
+
+
+class UserLookupRequestSerializer(serializers.Serializer):
+    """Serializer for seeking user details."""
+    phone_number = serializers.CharField(
+        required=True,
+        help_text="User's phone number"
+    )
+
+
+class UserLookupResponseSerializer(serializers.Serializer):
+    """Serializer for user lookup response."""
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    phone_number = serializers.CharField()
+    profile_picture = serializers.CharField(allow_null=True)
+    role = serializers.CharField()

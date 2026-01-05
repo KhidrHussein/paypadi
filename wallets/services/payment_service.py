@@ -352,6 +352,70 @@ class PaymentService:
             logger.error(f"Error verifying bank account: {str(e)}", exc_info=True)
             raise PaymentError(f"Failed to verify bank account: {str(e)}")
     
+    def get_or_create_deposit_account(self, user) -> Dict:
+        """Get or create a dedicated virtual deposit account for the user."""
+        wallet = Wallet.objects.get_or_create(user=user)[0]
+        
+        # Check if user already has a virtual account
+        if wallet.virtual_account_number and wallet.virtual_bank_code:
+            return {
+                'status': True,
+                'message': 'Virtual account retrieved',
+                'data': {
+                    'account_number': wallet.virtual_account_number,
+                    'account_name': wallet.virtual_account_name,
+                    'bank_name': wallet.virtual_bank_name,
+                    'bank_code': wallet.virtual_bank_code,
+                    'currency': wallet.currency
+                }
+            }
+        
+        try:
+            # 1. Ensure customer exists on payment gateway
+            customer_res = self.gateway.create_customer(user)
+            if not customer_res.get('status'):
+                raise PaymentError(f"Failed to create customer: {customer_res.get('message')}")
+            
+            customer_code = customer_res['data']['customer_code']
+            
+            # 2. Request virtual account
+            account_res = self.gateway.create_virtual_account(customer_code)
+            
+            if not account_res.get('status'):
+                # Handle cases where DVA creation isn't supported or fails
+                logger.warning(f"DVA creation failed: {account_res.get('message')}")
+                return {
+                    'status': False,
+                    'message': 'Could not generate virtual account. Please use standard deposit.',
+                    'data': None
+                }
+            
+            data = account_res['data']
+            
+            # 3. Save details to wallet
+            wallet.virtual_account_number = data.get('account_number')
+            wallet.virtual_account_name = data.get('account_name')
+            wallet.virtual_bank_name = data.get('bank_name')
+            wallet.virtual_bank_code = data.get('bank_code')
+            wallet.save(update_fields=[
+                'virtual_account_number', 'virtual_account_name', 
+                'virtual_bank_name', 'virtual_bank_code'
+            ])
+            
+            return {
+                'status': True,
+                'message': 'Virtual account created successfully',
+                'data': data
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating virtual account: {str(e)}", exc_info=True)
+            return {
+                'status': False,
+                'message': 'Failed to generate deposit account',
+                'data': None
+            }
+
     def _generate_reference(self, prefix: str) -> str:
         """Generate a unique transaction reference."""
         import uuid
@@ -367,5 +431,9 @@ class PaymentService:
         except:
             domain = 'example.com'  # Fallback for testing
             
-        path = reverse('payment-verify', kwargs={'reference': reference})
-        return f"https://{domain}{path}"
+        # Fix: Ensure we construct a valid URL even if reverse fails or site is not set
+        try:
+            path = reverse('payment-verify', kwargs={'reference': reference})
+            return f"https://{domain}{path}"
+        except Exception:
+            return f"https://{domain}/api/v1/payments/verify/{reference}/"

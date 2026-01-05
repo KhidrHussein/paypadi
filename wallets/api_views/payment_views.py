@@ -18,7 +18,9 @@ from ..serializers import (
     PaymentInitiationSerializer,
     TransferFundsSerializer,
     BankAccountVerificationSerializer,
-    TransactionSerializer
+    TransactionSerializer,
+    UserLookupRequestSerializer,
+    UserLookupResponseSerializer
 )
 from ..services.payment_service import PaymentService
 from ..exceptions import (
@@ -26,8 +28,88 @@ from ..exceptions import (
     InsufficientFundsError,
     InvalidAccountError
 )
+# Import User model to support checking recipient existence
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
+
+class UserLookupView(APIView):
+    """
+    API view for looking up a user/paypadi recipient.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        request_body=UserLookupRequestSerializer,
+        responses={200: UserLookupResponseSerializer, 404: 'User not found', 400: 'Bad Request'}
+    )
+    def post(self, request):
+        """Lookup user details by phone number."""
+        serializer = UserLookupRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        phone_number = serializer.validated_data['phone_number']
+        
+        try:
+            # Flexible query: assume numbers might come with or without + or leading 0s
+            # For simplicity, we assume exact match or simple variance.
+            # In production, use standard normalization.
+            user = User.objects.filter(phone_number__icontains=phone_number).first()
+            
+            if not user:
+                return Response(
+                    {'detail': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+             
+            # Construct response
+            data = {
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'phone_number': str(user.phone_number),
+                'role': user.role,
+                'profile_picture': user.profile.profile_picture.url if hasattr(user, 'profile') and user.profile.profile_picture else None
+            }
+            return Response(data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error checking user: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'Error performing lookup'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class DepositAccountView(APIView):
+    """
+    API view for retrieving a virtual deposit account.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        responses={200: 'Virtual account details', 500: 'Internal server error'}
+    )
+    def get(self, request):
+        """Get or create the virtual deposit account."""
+        try:
+            service = PaymentService()
+            result = service.get_or_create_deposit_account(request.user)
+            
+            if result['status']:
+                return Response(result['data'], status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'detail': result['message']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            logger.error(f"Error fetching deposit account: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'An error occurred while retrieving account details.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class PaymentInitiationView(APIView):
     """
