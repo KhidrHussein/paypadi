@@ -148,9 +148,9 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     
-    # Custom token serializers (if you have them)
-    # 'TOKEN_OBTAIN_SERIALIZER': 'users.jwt_serializers.CustomTokenObtainPairSerializer',
-    # 'TOKEN_REFRESH_SERIALIZER': 'users.jwt_serializers.CustomTokenRefreshSerializer',
+    # Custom token serializers
+    'TOKEN_OBTAIN_SERIALIZER': 'users.jwt_serializers.CustomTokenObtainPairSerializer',
+    'TOKEN_REFRESH_SERIALIZER': 'users.jwt_serializers.CustomTokenRefreshSerializer',
 }
 
 # CORS settings

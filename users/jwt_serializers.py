@@ -96,36 +96,56 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class CustomTokenRefreshSerializer(TokenRefreshSerializer):
     """
     Custom token refresh serializer that includes user data in the response.
     """
-    
+    token_class = RefreshToken
+
     def validate(self, attrs):
-        data = super().validate(attrs)
-        refresh = self.token_class(attrs["refresh"])
-        
-        # Add user data to the response
-        if hasattr(refresh, 'user'):
-            user = refresh.user
-            data['user'] = {
-                'id': user.id,
-                'phone_number': user.phone_number,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'is_driver': hasattr(user, 'driver_profile'),
-            }
+        # Get the token object before validation (which might blacklist it)
+        refresh = None
+        try:
+           refresh = self.token_class(attrs["refresh"])
+        except Exception:
+            # If token is invalid, let super().validate() handle the error or raise it here
+            # But usually super().validate() will fail if token is invalid.
+            pass
             
-            # Add driver-specific data if user is a driver
-            if hasattr(user, 'driver_profile'):
-                driver = user.driver_profile
-                data['user'].update({
-                    'driver_id': str(driver.id),
-                    'is_approved': driver.is_approved,
-                    'vehicle_number': driver.vehicle_number,
-                    'driver_license_number': driver.driver_license_number,
-                })
+        data = super().validate(attrs)
+        
+        # We can get the user from the refresh token payload
+        # Ensure we have the refresh object (re-instantiating might fail if blacklisted, so use the one from before)
+        # Note: 'refresh' object here refers to the OLD token.
+        
+        if refresh:
+            user_id = refresh.payload.get('user_id')
+            if user_id:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                try:
+                    user = User.objects.get(id=user_id)
+                    data['user'] = {
+                        'id': str(user.id), # Changed from user.id to str(user.id)
+                        'phone_number': str(user.phone_number), # Ensure string format
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'is_driver': hasattr(user, 'driver_profile'),
+                    }
+                    
+                    # Add driver-specific data if user is a driver
+                    if hasattr(user, 'driver_profile'):
+                        driver = user.driver_profile
+                        data['user'].update({
+                            'driver_id': str(driver.id),
+                            'is_approved': driver.is_approved,
+                            'vehicle_number': driver.vehicle_number,
+                            'driver_license_number': driver.driver_license_number,
+                        })
+                except User.DoesNotExist:
+                    pass
         
         return data
