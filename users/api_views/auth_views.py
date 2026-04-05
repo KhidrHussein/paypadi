@@ -80,31 +80,6 @@ class UserLoginView(TokenObtainPairView):
     )
     def post(self, request, *args, **kwargs):
         """Handle user login and return JWT tokens with user data."""
-        serializer = self.get_serializer(data=request.data)
-        
-        try:
-            serializer.is_valid(raise_exception=True)
-        except Exception as e:
-            return Response(
-                {"detail": "Invalid credentials"}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        user = authenticate(
-            phone_number=request.data.get('phone_number'),
-            password=request.data.get('password')
-        )
-        
-        if not user:
-            return Response(
-                {"detail": "Invalid credentials"}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        refresh = RefreshToken.for_user(user)
-        
-        return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user': UserSerializer(user).data
-        })
+        # The base TokenObtainPairView handles validation and authentication
+        # using the CustomTokenObtainPairSerializer defined in settings.py
+        return super().post(request, *args, **kwargs)

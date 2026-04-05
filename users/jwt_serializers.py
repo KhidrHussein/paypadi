@@ -43,13 +43,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     code='account_inactive'
                 )
                 
-            # Check if the user is a driver and if driver profile is approved
-            if hasattr(user, 'driver_profile'):
-                if not user.driver_profile.is_approved:
-                    raise serializers.ValidationError(
-                        _('Your driver account is pending approval. Please wait for admin approval.'),
-                        code='driver_pending_approval'
-                    )
                 
         except User.DoesNotExist:
             raise serializers.ValidationError(
@@ -74,8 +67,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
         data['user'] = {
-            'id': self.user.id,
-            'phone_number': self.user.phone_number,
+            'id': str(self.user.id),
+            'phone_number': str(self.user.phone_number),
             'email': self.user.email,
             'first_name': self.user.first_name,
             'last_name': self.user.last_name,
@@ -88,7 +81,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data['user'].update({
                 'driver_id': str(driver.id),
                 'is_approved': driver.is_approved,
-                'vehicle_number': driver.vehicle_number,
+                'vehicle_model': driver.vehicle_model,
+                'license_plate': driver.license_plate,
                 'driver_license_number': driver.driver_license_number,
             })
         
@@ -142,7 +136,8 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
                         data['user'].update({
                             'driver_id': str(driver.id),
                             'is_approved': driver.is_approved,
-                            'vehicle_number': driver.vehicle_number,
+                            'vehicle_model': driver.vehicle_model,
+                            'license_plate': driver.license_plate,
                             'driver_license_number': driver.driver_license_number,
                         })
                 except User.DoesNotExist:
