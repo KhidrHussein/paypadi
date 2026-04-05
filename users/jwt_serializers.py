@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 
 import phonenumbers
+from users.serializers import UserSerializer
 
 User = get_user_model()
 
@@ -66,14 +67,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Add custom claims to the token
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
-        data['user'] = {
-            'id': str(self.user.id),
-            'phone_number': str(self.user.phone_number),
-            'email': self.user.email,
-            'first_name': self.user.first_name,
-            'last_name': self.user.last_name,
-            'is_driver': hasattr(self.user, 'driver_profile'),
-        }
+        # Include all fields from UserSerializer
+        data['user'] = UserSerializer(self.user).data
+        data['user']['is_driver'] = hasattr(self.user, 'driver_profile')
         
         # Add driver-specific data if user is a driver
         if hasattr(self.user, 'driver_profile'):
@@ -121,14 +117,9 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
                 User = get_user_model()
                 try:
                     user = User.objects.get(id=user_id)
-                    data['user'] = {
-                        'id': str(user.id), # Changed from user.id to str(user.id)
-                        'phone_number': str(user.phone_number), # Ensure string format
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'is_driver': hasattr(user, 'driver_profile'),
-                    }
+                    # Include all fields from UserSerializer
+                    data['user'] = UserSerializer(user).data
+                    data['user']['is_driver'] = hasattr(user, 'driver_profile')
                     
                     # Add driver-specific data if user is a driver
                     if hasattr(user, 'driver_profile'):
