@@ -141,6 +141,7 @@ class OTP(models.Model):
     """Model to store OTPs for phone verification and other purposes."""
     
     class OTPPurpose(models.TextChoices):
+        REGISTRATION = 'registration', 'Registration'
         LOGIN = 'login', 'Login'
         RESET_PASSWORD = 'reset_password', 'Reset Password'
         TRANSFER_CONFIRM = 'transfer_confirm', 'Transfer Confirmation'
