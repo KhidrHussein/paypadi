@@ -11,7 +11,6 @@ from .payment_views import (
     PaymentVerificationView,
     TransferFundsView,
     VerifyBankAccountView,
-    PaymentWebhookView,
     TransactionHistoryView,
     UserLookupView,
     DepositAccountView
@@ -22,7 +21,6 @@ __all__ = [
     'PaymentVerificationView',
     'TransferFundsView',
     'VerifyBankAccountView',
-    'PaymentWebhookView',
     'TransactionHistoryView',
     'UserLookupView',
     'DepositAccountView'

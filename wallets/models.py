@@ -1,6 +1,6 @@
 import uuid
 from enum import Enum
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from django.conf import settings
@@ -84,106 +84,121 @@ class Wallet(models.Model):
         if amount <= 0:
             raise ValueError("Deposit amount must be greater than zero")
         
-        self.balance += amount
-        self.save(update_fields=['balance', 'updated_at'])
-        
-        # Create transaction record
-        Transaction.objects.create(
-            wallet=self,
-            amount=amount,
-            transaction_type=Transaction.TransactionType.DEPOSIT,
-            status=Transaction.TransactionStatus.COMPLETED,
-            reference=reference,
-            metadata=metadata or {}
-        )
+        with transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            wallet.balance += amount
+            wallet.save(update_fields=['balance', 'updated_at'])
+            self.refresh_from_db()
+            
+            # Create transaction record
+            Transaction.objects.create(
+                wallet=self,
+                amount=amount,
+                transaction_type=Transaction.TransactionType.DEPOSIT,
+                status=Transaction.TransactionStatus.COMPLETED,
+                reference=reference,
+                metadata=metadata or {}
+            )
     
     def withdraw(self, amount, reference='', metadata=None):
         """Withdraw funds from the wallet."""
         if amount <= 0:
             raise ValueError("Withdrawal amount must be greater than zero")
         
-        if not self.can_withdraw(amount):
-            raise ValueError("Insufficient funds")
-        
-        self.balance -= amount
-        self.save(update_fields=['balance', 'updated_at'])
-        
-        # Create transaction record
-        Transaction.objects.create(
-            wallet=self,
-            amount=amount,
-            transaction_type=Transaction.TransactionType.WITHDRAWAL,
-            status=Transaction.TransactionStatus.COMPLETED,
-            reference=reference,
-            metadata=metadata or {}
-        )
+        with transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if not wallet.can_withdraw(amount):
+                raise ValueError("Insufficient funds")
+            
+            wallet.balance -= amount
+            wallet.save(update_fields=['balance', 'updated_at'])
+            self.refresh_from_db()
+            
+            # Create transaction record
+            Transaction.objects.create(
+                wallet=self,
+                amount=amount,
+                transaction_type=Transaction.TransactionType.WITHDRAWAL,
+                status=Transaction.TransactionStatus.COMPLETED,
+                reference=reference,
+                metadata=metadata or {}
+            )
     
     def reserve_funds(self, amount, reference='', metadata=None):
         """Reserve funds for a pending transaction."""
         if amount <= 0:
             raise ValueError("Amount must be greater than zero")
         
-        if not self.can_withdraw(amount):
-            raise ValueError("Insufficient available balance")
-        
-        self.reserved_balance += amount
-        self.save(update_fields=['reserved_balance', 'updated_at'])
-        
-        # Create transaction record
-        transaction = Transaction.objects.create(
-            wallet=self,
-            amount=amount,
-            transaction_type=Transaction.TransactionType.RESERVATION,
-            status=Transaction.TransactionStatus.PENDING,
-            reference=reference,
-            metadata=metadata or {}
-        )
-        
-        return transaction
+        with transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if not wallet.can_withdraw(amount):
+                raise ValueError("Insufficient available balance")
+            
+            wallet.reserved_balance += amount
+            wallet.save(update_fields=['reserved_balance', 'updated_at'])
+            self.refresh_from_db()
+            
+            # Create transaction record
+            transaction_obj = Transaction.objects.create(
+                wallet=self,
+                amount=amount,
+                transaction_type=Transaction.TransactionType.RESERVATION,
+                status=Transaction.TransactionStatus.PENDING,
+                reference=reference,
+                metadata=metadata or {}
+            )
+            
+            return transaction_obj
     
     def release_reserved_funds(self, amount, reference='', metadata=None):
         """Release reserved funds back to available balance."""
-        if amount <= 0 or amount > self.reserved_balance:
-            raise ValueError("Invalid amount to release")
-        
-        self.reserved_balance -= amount
-        self.save(update_fields=['reserved_balance', 'updated_at'])
-        
-        # Update the original reservation transaction
-        if reference:
-            try:
-                reservation = Transaction.objects.get(
-                    reference=reference,
-                    transaction_type=Transaction.TransactionType.RESERVATION,
-                    status=Transaction.TransactionStatus.PENDING
-                )
-                reservation.status = Transaction.TransactionStatus.CANCELLED
-                reservation.metadata.update(metadata or {})
-                reservation.save()
-            except Transaction.DoesNotExist:
-                pass
+        with transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if amount <= 0 or amount > wallet.reserved_balance:
+                raise ValueError("Invalid amount to release")
+            
+            wallet.reserved_balance -= amount
+            wallet.save(update_fields=['reserved_balance', 'updated_at'])
+            self.refresh_from_db()
+            
+            # Update the original reservation transaction
+            if reference:
+                try:
+                    reservation = Transaction.objects.get(
+                        reference=reference,
+                        transaction_type=Transaction.TransactionType.RESERVATION,
+                        status=Transaction.TransactionStatus.PENDING
+                    )
+                    reservation.status = Transaction.TransactionStatus.CANCELLED
+                    reservation.metadata.update(metadata or {})
+                    reservation.save()
+                except Transaction.DoesNotExist:
+                    pass
     
     def complete_reservation(self, amount, reference='', metadata=None):
         """Complete a reservation by deducting the reserved amount."""
-        if amount <= 0 or amount > self.reserved_balance:
-            raise ValueError("Invalid amount to complete")
-        
-        self.reserved_balance -= amount
-        self.save(update_fields=['reserved_balance', 'updated_at'])
-        
-        # Update the original reservation transaction
-        if reference:
-            try:
-                reservation = Transaction.objects.get(
-                    reference=reference,
-                    transaction_type=Transaction.TransactionType.RESERVATION,
-                    status=Transaction.TransactionStatus.PENDING
-                )
-                reservation.status = Transaction.TransactionStatus.COMPLETED
-                reservation.metadata.update(metadata or {})
-                reservation.save()
-            except Transaction.DoesNotExist:
-                pass
+        with transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(pk=self.pk)
+            if amount <= 0 or amount > wallet.reserved_balance:
+                raise ValueError("Invalid amount to complete")
+            
+            wallet.reserved_balance -= amount
+            wallet.save(update_fields=['reserved_balance', 'updated_at'])
+            self.refresh_from_db()
+            
+            # Update the original reservation transaction
+            if reference:
+                try:
+                    reservation = Transaction.objects.get(
+                        reference=reference,
+                        transaction_type=Transaction.TransactionType.RESERVATION,
+                        status=Transaction.TransactionStatus.PENDING
+                    )
+                    reservation.status = Transaction.TransactionStatus.COMPLETED
+                    reservation.metadata.update(metadata or {})
+                    reservation.save()
+                except Transaction.DoesNotExist:
+                    pass
 
 
 class Transaction(models.Model):

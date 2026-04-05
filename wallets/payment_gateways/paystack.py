@@ -112,6 +112,51 @@ class PaystackGateway:
             }
         return response
 
+    def transfer_funds(
+        self,
+        amount: Decimal,
+        recipient_account: str,
+        recipient_bank_code: str,
+        reference: str,
+        narration: str = "",
+        **kwargs
+    ) -> Dict:
+        """Transfer funds by orchestrating recipient creation and the transfer request."""
+        # Resolve account name if not explicitly provided
+        name = kwargs.pop('recipient_name', None)
+        if not name and kwargs.get('metadata'):
+            name = kwargs.get('metadata').pop('recipient_name', None)
+            
+        if not name:
+            res = self.verify_bank_account(recipient_account, recipient_bank_code)
+            if res.get('status') and 'data' in res and 'account_name' in res['data']:
+                name = res['data']['account_name']
+            else:
+                name = 'Wallet Transfer'
+
+        # 1. Create recipient
+        recipient_response = self.create_transfer_recipient(
+            type='nuban',
+            name=name,
+            account_number=recipient_account,
+            bank_code=recipient_bank_code,
+            currency='NGN'
+        )
+        
+        if not recipient_response.get('status'):
+            return recipient_response
+            
+        recipient_code = recipient_response['data']['recipient_code']
+        
+        # 2. Initiate Transfer
+        return self.transfer(
+            amount=amount,
+            recipient_code=recipient_code,
+            reference=reference,
+            reason=narration,
+            **kwargs
+        )
+
     def transfer(
         self,
         amount: Decimal,

@@ -54,57 +54,56 @@ class PaymentService:
         # Create a pending transaction
         reference = self._generate_reference(transaction_type.upper())
         
-        with db_transaction.atomic():
-            transaction = Transaction.objects.create(
-                wallet=wallet,
+        transaction = Transaction.objects.create(
+            wallet=wallet,
+            amount=amount,
+            transaction_type=transaction_type,
+            status=Transaction.TransactionStatus.PENDING,
+            reference=reference,
+            description=description,
+            metadata=metadata or {}
+        )
+        
+        # Initialize payment with the gateway
+        try:
+            callback_url = self._build_callback_url(reference)
+            result = self.gateway.initialize_payment(
                 amount=amount,
-                transaction_type=transaction_type,
-                status=Transaction.TransactionStatus.PENDING,
+                email=user.email or f"{user.phone_number}@paypadi.ng",
                 reference=reference,
-                description=description,
-                metadata=metadata or {}
+                callback_url=callback_url,
+                metadata={
+                    'user_id': str(user.id),
+                    'transaction_id': str(transaction.id),
+                    'type': transaction_type,
+                    **(metadata or {})
+                },
+                **kwargs
             )
             
-            # Initialize payment with the gateway
-            try:
-                callback_url = self._build_callback_url(reference)
-                result = self.gateway.initialize_payment(
-                    amount=amount,
-                    email=user.email or f"{user.phone_number}@paypadi.ng",
-                    reference=reference,
-                    callback_url=callback_url,
-                    metadata={
-                        'user_id': str(user.id),
-                        'transaction_id': str(transaction.id),
-                        'type': transaction_type,
-                        **(metadata or {})
-                    },
-                    **kwargs
-                )
-                
-                # Update transaction with gateway reference if available
-                if 'data' in result and 'reference' in result['data']:
-                    transaction.gateway_reference = result['data']['reference']
-                    transaction.save(update_fields=['gateway_reference'])
-                
-                return {
-                    'status': True,
-                    'message': 'Payment initialized',
-                    'data': {
-                        'transaction_reference': reference,
-                        'authorization_url': result.get('data', {}).get('authorization_url', ''),
-                        'reference': reference,
-                        'amount': str(amount),
-                        'transaction_id': str(transaction.id)
-                    }
+            # Update transaction with gateway reference if available
+            if 'data' in result and 'reference' in result['data']:
+                transaction.gateway_reference = result['data']['reference']
+                transaction.save(update_fields=['gateway_reference'])
+            
+            return {
+                'status': True,
+                'message': 'Payment initialized',
+                'data': {
+                    'transaction_reference': reference,
+                    'authorization_url': result.get('data', {}).get('authorization_url', ''),
+                    'reference': reference,
+                    'amount': str(amount),
+                    'transaction_id': str(transaction.id)
                 }
-                
-            except Exception as e:
-                logger.error(f"Error initializing payment: {str(e)}", exc_info=True)
-                transaction.status = Transaction.TransactionStatus.FAILED
-                transaction.metadata['error'] = str(e)
-                transaction.save(update_fields=['status', 'metadata'])
-                raise PaymentError(f"Failed to initialize payment: {str(e)}")
+            }
+            
+        except Exception as e:
+            logger.error(f"Error initializing payment: {str(e)}", exc_info=True)
+            transaction.status = Transaction.TransactionStatus.FAILED
+            transaction.metadata['error'] = str(e)
+            transaction.save(update_fields=['status', 'metadata'])
+            raise PaymentError(f"Failed to initialize payment: {str(e)}")
     
     def verify_payment(self, reference: str) -> Dict:
         """Verify the status of a payment transaction.
@@ -115,97 +114,100 @@ class PaymentService:
         Returns:
             Dict containing payment verification details
         """
+        # Make network call outside DB lock
         try:
-            transaction = Transaction.objects.select_for_update().get(reference=reference)
-            
-            # Skip if already completed
-            if transaction.status == Transaction.TransactionStatus.COMPLETED:
-                return {
-                    'status': True,
-                    'message': 'Payment already verified',
-                    'data': {
-                        'status': 'completed',
-                        'reference': reference,
-                        'amount': str(transaction.amount)
-                    }
-                }
-            
-            # Verify with payment gateway
             result = self.gateway.verify_payment(reference)
-            
-            if not result.get('status'):
-                transaction.status = Transaction.TransactionStatus.FAILED
-                transaction.metadata['verification_error'] = result.get('message', 'Verification failed')
-                transaction.save(update_fields=['status', 'metadata'])
+        except Exception as e:
+            logger.error(f"Gateway verify_payment error: {str(e)}", exc_info=True)
+            raise PaymentError(f"Failed to verify payment with gateway: {str(e)}")
+
+        try:
+            with db_transaction.atomic():
+                transaction = Transaction.objects.select_for_update().get(reference=reference)
                 
-                # Refund if it was a transfer (funds were deducted at initiation)
-                if transaction.transaction_type == Transaction.TransactionType.TRANSFER:
-                    transaction.wallet.balance += transaction.amount
-                    transaction.wallet.save(update_fields=['balance'])
-                
-                return {
-                    'status': False,
-                    'message': result.get('message', 'Payment verification failed'),
-                    'data': {
-                        'status': 'failed',
-                        'reference': reference,
-                        'amount': str(transaction.amount)
+                # Ensure we only verify deposits. Transfers shouldn't use this logic.
+                if transaction.transaction_type != Transaction.TransactionType.DEPOSIT:
+                    return {
+                        'status': False,
+                        'message': 'This endpoint can only verify deposits',
+                        'data': None
                     }
-                }
-            
-            # Update transaction status based on gateway response
-            gateway_status = result.get('data', {}).get('status', '').lower()
-            
-            if gateway_status == TransactionStatus.SUCCESSFUL:
-                transaction.status = Transaction.TransactionStatus.COMPLETED
-                transaction.metadata['completed_at'] = str(timezone.now())
                 
-                # Update wallet balance for successful deposits
-                if transaction.transaction_type == Transaction.TransactionType.DEPOSIT:
-                    transaction.wallet.balance += transaction.amount
-                    transaction.wallet.save(update_fields=['balance'])
+                # Skip if already completed
+                if transaction.status == Transaction.TransactionStatus.COMPLETED:
+                    return {
+                        'status': True,
+                        'message': 'Payment already verified',
+                        'data': {
+                            'status': 'completed',
+                            'reference': reference,
+                            'amount': str(transaction.amount)
+                        }
+                    }
                 
-                transaction.save(update_fields=['status', 'metadata'])
+                if not result.get('status'):
+                    transaction.status = Transaction.TransactionStatus.FAILED
+                    transaction.metadata['verification_error'] = result.get('message', 'Verification failed')
+                    transaction.save(update_fields=['status', 'metadata'])
+                    
+                    return {
+                        'status': False,
+                        'message': result.get('message', 'Payment verification failed'),
+                        'data': {
+                            'status': 'failed',
+                            'reference': reference,
+                            'amount': str(transaction.amount)
+                        }
+                    }
                 
+                # Update transaction status based on gateway response
+                gateway_status = result.get('data', {}).get('status', '').lower()
+                
+                if gateway_status == TransactionStatus.SUCCESSFUL:
+                    transaction.status = Transaction.TransactionStatus.COMPLETED
+                    transaction.metadata['completed_at'] = str(timezone.now())
+                    transaction.save(update_fields=['status', 'metadata'])
+                    
+                    # Update wallet balance for successful deposits
+                    if transaction.transaction_type == Transaction.TransactionType.DEPOSIT:
+                        wallet = Wallet.objects.select_for_update().get(id=transaction.wallet_id)
+                        wallet.balance += transaction.amount
+                        wallet.save(update_fields=['balance'])
+                    
+                    return {
+                        'status': True,
+                        'message': 'Payment verified successfully',
+                        'data': {
+                            'status': 'completed',
+                            'reference': reference,
+                            'amount': str(transaction.amount)
+                        }
+                    }
+                
+                elif gateway_status == TransactionStatus.FAILED:
+                    transaction.status = Transaction.TransactionStatus.FAILED
+                    transaction.save(update_fields=['status'])
+                    
+                    return {
+                        'status': False,
+                        'message': 'Payment failed',
+                        'data': {
+                            'status': 'failed',
+                            'reference': reference,
+                            'amount': str(transaction.amount)
+                        }
+                    }
+                
+                # Still pending
                 return {
                     'status': True,
-                    'message': 'Payment verified successfully',
+                    'message': 'Payment is still pending',
                     'data': {
-                        'status': 'completed',
+                        'status': 'pending',
                         'reference': reference,
                         'amount': str(transaction.amount)
                     }
                 }
-            
-            elif gateway_status == TransactionStatus.FAILED:
-                transaction.status = Transaction.TransactionStatus.FAILED
-                transaction.save(update_fields=['status'])
-                
-                # Refund if it was a transfer (funds were deducted at initiation)
-                if transaction.transaction_type == Transaction.TransactionType.TRANSFER:
-                    transaction.wallet.balance += transaction.amount
-                    transaction.wallet.save(update_fields=['balance'])
-                
-                return {
-                    'status': False,
-                    'message': 'Payment failed',
-                    'data': {
-                        'status': 'failed',
-                        'reference': reference,
-                        'amount': str(transaction.amount)
-                    }
-                }
-            
-            # Still pending
-            return {
-                'status': True,
-                'message': 'Payment is still pending',
-                'data': {
-                    'status': 'pending',
-                    'reference': reference,
-                    'amount': str(transaction.amount)
-                }
-            }
             
         except Transaction.DoesNotExist:
             raise PaymentError(f"Transaction with reference {reference} not found")
@@ -221,6 +223,7 @@ class PaymentService:
         recipient_bank_code: str,
         description: str = "",
         metadata: Optional[Dict] = None,
+        transaction_type: str = 'transfer',
         **kwargs
     ) -> Dict:
         """Transfer funds to a bank account.
@@ -232,25 +235,26 @@ class PaymentService:
             recipient_bank_code: Recipient's bank code
             description: Transfer description
             metadata: Additional metadata
+            transaction_type: Type of transaction (transfer or withdrawal)
             **kwargs: Additional parameters for the payment gateway
             
         Returns:
             Dict containing transfer details
         """
-        wallet = Wallet.objects.select_for_update().get(user=sender)
-        
-        # Check sufficient balance
-        if wallet.available_balance < amount:
-            raise InsufficientFundsError("Insufficient balance")
-        
-        reference = self._generate_reference('TRF')
+        reference = self._generate_reference('TRF' if transaction_type == 'transfer' else 'WTH')
         
         with db_transaction.atomic():
+            wallet = Wallet.objects.select_for_update().get(user=sender)
+            
+            # Check sufficient balance
+            if wallet.available_balance < amount:
+                raise InsufficientFundsError("Insufficient balance")
+            
             # Create a pending transaction
             transaction = Transaction.objects.create(
                 wallet=wallet,
                 amount=amount,
-                transaction_type=Transaction.TransactionType.TRANSFER,
+                transaction_type=transaction_type,
                 status=Transaction.TransactionStatus.PENDING,
                 reference=reference,
                 description=description,
@@ -265,21 +269,24 @@ class PaymentService:
             wallet.balance -= amount
             wallet.save(update_fields=['balance'])
             
-            try:
-                # Initiate transfer with payment gateway
-                result = self.gateway.transfer_funds(
-                    amount=amount,
-                    recipient_account=recipient_account,
-                    recipient_bank_code=recipient_bank_code,
-                    reference=reference,
-                    narration=description,
-                    metadata={
-                        'user_id': str(sender.id),
-                        'transaction_id': str(transaction.id),
-                        **(metadata or {})
-                    },
-                    **kwargs
-                )
+        try:
+            # Initiate transfer with payment gateway
+            result = self.gateway.transfer_funds(
+                amount=amount,
+                recipient_account=recipient_account,
+                recipient_bank_code=recipient_bank_code,
+                reference=reference,
+                narration=description,
+                metadata={
+                    'user_id': str(sender.id),
+                    'transaction_id': str(transaction.id),
+                    **(metadata or {})
+                },
+                **kwargs
+            )
+            
+            with db_transaction.atomic():
+                transaction = Transaction.objects.select_for_update().get(id=transaction.id)
                 
                 # Update transaction with gateway reference if available
                 if 'data' in result and 'reference' in result['data']:
@@ -298,29 +305,31 @@ class PaymentService:
                     ]
                 )
                 
-                return {
-                    'status': True,
-                    'message': 'Transfer initiated',
-                    'data': {
-                        'transaction_reference': reference,
-                        'status': transaction.status,
-                        'amount': str(amount),
-                        'recipient_account': recipient_account,
-                        'transaction_id': str(transaction.id)
-                    }
+            return {
+                'status': True,
+                'message': 'Transfer initiated',
+                'data': {
+                    'transaction_reference': reference,
+                    'status': transaction.status,
+                    'amount': str(amount),
+                    'recipient_account': recipient_account,
+                    'transaction_id': str(transaction.id)
                 }
+            }
                 
-            except Exception as e:
-                logger.error(f"Error initiating transfer: {str(e)}", exc_info=True)
-                transaction.status = Transaction.TransactionStatus.FAILED
-                transaction.metadata['error'] = str(e)
-                transaction.save(update_fields=['status', 'metadata'])
+        except Exception as e:
+            logger.error(f"Error initiating transfer: {str(e)}", exc_info=True)
+            with db_transaction.atomic():
+                try:
+                    transaction = Transaction.objects.select_for_update().get(id=transaction.id)
+                    # DO NOT refund immediately on exception. Network timeouts mean outcome is unknown.
+                    transaction.metadata['error'] = str(e)
+                    transaction.metadata['requires_manual_reconciliation'] = True
+                    transaction.save(update_fields=['metadata'])
+                except Exception as db_error:
+                    logger.error(f"Error updating transaction after failed transfer initiation: {str(db_error)}")
                 
-                # Refund balance since transfer failed
-                wallet.balance += amount
-                wallet.save(update_fields=['balance'])
-                
-                raise PaymentError(f"Failed to initiate transfer: {str(e)}")
+            raise PaymentError(f"Failed to confirm transfer initiation. Status unknown: {str(e)}")
     
     def verify_bank_account(
         self,

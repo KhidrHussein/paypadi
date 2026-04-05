@@ -7,7 +7,6 @@ from .api_views import (
     TransferFundsView,
     VerifyBankAccountView,
     PaymentVerificationView,
-    PaymentWebhookView,
     TransactionHistoryView,
     UserLookupView,
     DepositAccountView
@@ -28,7 +27,6 @@ urlpatterns = [
     # Payment endpoints
     path('payments/initiate/', PaymentInitiationView.as_view(), name='initiate-payment'),
     path('payments/verify/<str:reference>/', PaymentVerificationView.as_view(), name='payment-verify'),
-    path('payments/webhook/', PaymentWebhookView.as_view(), name='payment-webhook'),
     path('payments/paystack/webhook/', csrf_exempt(paystack_webhook), name='paystack-webhook'),
     
     # Fund transfer endpoints

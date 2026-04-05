@@ -199,48 +199,136 @@ class TransferFundsView(APIView):
     )
     def post(self, request):
         """Transfer funds to another account."""
-        serializer = TransferFundsSerializer(data=request.data)
+        serializer = TransferFundsSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        try:
-            payment_service = PaymentService()
-            result = payment_service.transfer_funds(
-                sender=request.user,
-                amount=serializer.validated_data['amount'],
-                recipient_account=serializer.validated_data['recipient_account'],
-                recipient_bank_code=serializer.validated_data['recipient_bank_code'],
-                description=serializer.validated_data.get('description', ''),
-                metadata={
-                    'pin_verified': True,  # Assuming PIN was verified by the serializer
-                    **(serializer.validated_data.get('metadata', {}))
-                }
-            )
+        amount = serializer.validated_data['amount']
+        description = serializer.validated_data.get('description', '')
+        beneficiary_id = serializer.validated_data.get('beneficiary_id')
+        
+        recipient_user = None
+        recipient_account_number = None
+        recipient_bank_code = None
+        
+        # Resolve recipient
+        if beneficiary_id:
+            from ..models import Beneficiary
+            try:
+                beneficiary = Beneficiary.objects.get(
+                    id=beneficiary_id,
+                    owner=request.user,
+                    is_verified=True
+                )
+                recipient_account_number = beneficiary.account_number
+                recipient_bank_code = beneficiary.bank_code
+                if beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
+                    recipient_user = User.objects.filter(phone_number__icontains=beneficiary.account_number).first()
+            except Beneficiary.DoesNotExist:
+                return Response(
+                    {"beneficiary_id": ["Invalid or unverified beneficiary"]},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            recipient_phone = serializer.validated_data.get('recipient_phone')
+            recipient_account_number = serializer.validated_data.get('recipient_account_number')
+            recipient_bank_code = serializer.validated_data.get('recipient_bank_code')
             
-            return Response(result, status=status.HTTP_200_OK)
+            if recipient_phone:
+                recipient_user = User.objects.filter(phone_number__icontains=recipient_phone).first()
+
+        # Internal Transfer
+        if recipient_user:
+            from core.models import AuditLog, Notification
+            from django.utils import timezone
             
-        except InsufficientFundsError as e:
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except InvalidAccountError as e:
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except PaymentError as e:
-            logger.error(f"Funds transfer failed: {str(e)}")
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error in funds transfer: {str(e)}", exc_info=True)
-            return Response(
-                {'detail': 'An error occurred while processing your request.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            if recipient_user == request.user:
+                 return Response({"detail": "Cannot transfer to yourself"}, status=status.HTTP_400_BAD_REQUEST)
+                 
+            try:
+                with transaction.atomic():
+                    # Acquire locks in deterministic order to prevent deadlocks
+                    for uid in sorted([request.user.id, recipient_user.id]):
+                        Wallet.objects.select_for_update().get(user_id=uid)
+                    
+                    wallet = Wallet.objects.get(user=request.user)
+                    recipient_wallet = Wallet.objects.get(user=recipient_user)
+                    
+                    if wallet.available_balance < amount:
+                        return Response({"amount": ["Insufficient balance"]}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    reference = f"TRF-{timezone.now().strftime('%Y%m%d%H%M%S')}-{request.user.id}"
+                    
+                    wallet.balance -= amount
+                    wallet.save(update_fields=['balance'])
+                    recipient_wallet.balance += amount
+                    recipient_wallet.save(update_fields=['balance'])
+                    
+                    txn_out = Transaction.objects.create(
+                        wallet=wallet, amount=amount,
+                        transaction_type=Transaction.TransactionType.TRANSFER,
+                        status=Transaction.TransactionStatus.COMPLETED,
+                        reference=reference, recipient=recipient_user,
+                        description=description or f"Transfer to {recipient_user.get_full_name() or recipient_user.phone_number}",
+                        metadata={'recipient_phone': str(recipient_user.phone_number), 'initiated_by': str(request.user.phone_number)}
+                    )
+                    
+                    txn_in = Transaction.objects.create(
+                        wallet=recipient_wallet, amount=amount,
+                        transaction_type=Transaction.TransactionType.TRANSFER,
+                        status=Transaction.TransactionStatus.COMPLETED,
+                        reference=f"REC-{reference}", recipient=request.user,
+                        description=description or f"Received from {request.user.get_full_name() or request.user.phone_number}",
+                        metadata={'sender_phone': str(request.user.phone_number), 'original_reference': reference}
+                    )
+                    
+                    # Attempt Notification
+                    try:
+                        AuditLog.log_action(action='transfer_completed', user=request.user, data={'amount': str(amount), 'recipient': str(recipient_user.phone_number), 'reference': reference})
+                        Notification.create_notification(user=recipient_user, title="Funds Received", message=f"You received ₦{amount:,.2f} from {request.user.get_full_name() or request.user.phone_number}", notification_type='transaction', action_url=f"/transactions/{txn_in.id}")
+                    except Exception as logging_error:
+                        logger.warning(f"Failed to log notification: {str(logging_error)}")
+                        pass
+                    
+                    return Response({
+                        "status": "success", "message": "Transfer successful",
+                        "reference": reference, "amount": amount,
+                        "recipient": str(recipient_user.phone_number),
+                        "recipient_name": recipient_user.get_full_name()
+                    })
+            except Exception as e:
+                logger.error(f"Internal Transfer failed: {str(e)}", exc_info=True)
+                return Response({"detail": "Transfer failed", 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # External Transfer
+        else:
+            if not recipient_account_number or not recipient_bank_code:
+                 return Response({"detail": "Recipient account number and bank code required for external transfer."}, status=status.HTTP_400_BAD_REQUEST)
+                 
+            try:
+                payment_service = PaymentService()
+                result = payment_service.transfer_funds(
+                    sender=request.user,
+                    amount=amount,
+                    recipient_account=recipient_account_number,
+                    recipient_bank_code=recipient_bank_code,
+                    description=description,
+                    metadata={
+                        'pin_verified': True,
+                    }
+                )
+                return Response(result, status=status.HTTP_200_OK)
+                
+            except InsufficientFundsError as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except InvalidAccountError as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except PaymentError as e:
+                logger.error(f"Funds transfer failed: {str(e)}")
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"Unexpected error in funds transfer: {str(e)}", exc_info=True)
+                return Response({'detail': 'An error occurred while processing your request.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyBankAccountView(APIView):
@@ -282,49 +370,7 @@ class VerifyBankAccountView(APIView):
             )
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class PaymentWebhookView(APIView):
-    """
-    Webhook endpoint for payment notifications from the payment gateway.
-    """
-    # This view is CSRF exempt since it will be called by an external service
-    
-    def post(self, request, *args, **kwargs):
-        """Handle payment webhook notifications."""
-        from django.http import HttpResponse
-        
-        try:
-            # Get the raw request body for signature verification
-            payload = request.body
-            signature = request.headers.get('X-Paystack-Signature')  # Example for Paystack
-            
-            # Verify the webhook signature
-            if not self._verify_webhook_signature(payload, signature):
-                logger.warning("Invalid webhook signature")
-                return HttpResponse(status=400)
-            
-            # Process the webhook event
-            event = request.data
-            event_type = event.get('event')
-            
-            if event_type == 'charge.success':
-                # Handle successful charge
-                reference = event.get('data', {}).get('reference')
-                if reference:
-                    payment_service = PaymentService()
-                    payment_service.verify_payment(reference)
-            
-            return HttpResponse(status=200)
-            
-        except Exception as e:
-            logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
-            return HttpResponse(status=500)
-    
-    def _verify_webhook_signature(self, payload, signature):
-        """Verify the webhook signature."""
-        # In a real implementation, this would verify the signature
-        # using the webhook secret from settings
-        return True  # For development
+
 
 
 class TransactionHistoryView(APIView):
