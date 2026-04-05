@@ -29,7 +29,7 @@ def send_sms(phone_number, message):
 
         client.messages.create(
             body=message,
-            from_=settings.TWILIO_PHONE_NUMBER,
+            from_="Paypadi",
             to=str(phone_number)
         )
         logger.info(f"SMS sent successfully to {phone_number}")

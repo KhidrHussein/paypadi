@@ -1,4 +1,4 @@
-from decimal import Decimal
+qfrom decimal import Decimal
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
