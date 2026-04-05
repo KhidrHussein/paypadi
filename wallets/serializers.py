@@ -349,9 +349,23 @@ class TransactionQuerySerializer(serializers.Serializer):
 class UserLookupRequestSerializer(serializers.Serializer):
     """Serializer for seeking user details."""
     phone_number = serializers.CharField(
-        required=True,
+        required=False,
+        allow_blank=True,
         help_text="User's phone number"
     )
+    account_number = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="User's account number (phone number)"
+    )
+
+    def validate(self, attrs):
+        """Ensure either phone_number or account_number is provided."""
+        if not attrs.get('phone_number') and not attrs.get('account_number'):
+            raise serializers.ValidationError(
+                "Either phone_number or account_number must be provided."
+            )
+        return attrs
 
 
 class UserLookupResponseSerializer(serializers.Serializer):
@@ -359,5 +373,6 @@ class UserLookupResponseSerializer(serializers.Serializer):
     first_name = serializers.CharField()
     last_name = serializers.CharField()
     phone_number = serializers.CharField()
+    account_number = serializers.CharField()
     profile_picture = serializers.CharField(allow_null=True)
     role = serializers.CharField()

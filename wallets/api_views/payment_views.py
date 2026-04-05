@@ -50,12 +50,10 @@ class UserLookupView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        phone_number = serializer.validated_data['phone_number']
+        phone_number = serializer.validated_data.get('phone_number') or serializer.validated_data.get('account_number')
         
         try:
             # Flexible query: assume numbers might come with or without + or leading 0s
-            # For simplicity, we assume exact match or simple variance.
-            # In production, use standard normalization.
             user = User.objects.filter(phone_number__icontains=phone_number).first()
             
             if not user:
@@ -69,6 +67,7 @@ class UserLookupView(APIView):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'phone_number': str(user.phone_number),
+                'account_number': str(user.phone_number),  # Frontend expects account_number
                 'role': user.role,
                 'profile_picture': user.profile.profile_picture.url if hasattr(user, 'profile') and user.profile.profile_picture else None
             }

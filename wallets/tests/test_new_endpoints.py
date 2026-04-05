@@ -31,6 +31,16 @@ class NewEndpointsTest(TestCase):
         self.assertEqual(response.data['first_name'], 'Test')
         self.assertEqual(response.data['last_name'], 'User')
         self.assertIn('+2348000000000', response.data['phone_number'])
+        self.assertIn('+2348000000000', response.data['account_number'])
+
+    def test_user_lookup_by_account_number(self):
+        """Test looking up an existing user using account_number field."""
+        url = '/api/v1/wallets/payments/lookup/'
+        data = {'account_number': '8000000000'}
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['account_number'], response.data['phone_number'])
 
     def test_user_lookup_not_found(self):
         """Test looking up a non-existent user."""
