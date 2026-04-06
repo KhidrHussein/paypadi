@@ -376,3 +376,15 @@ class UserLookupResponseSerializer(serializers.Serializer):
     account_number = serializers.CharField()
     profile_picture = serializers.CharField(allow_null=True)
     role = serializers.CharField()
+
+
+class RecentBeneficiarySerializer(serializers.Serializer):
+    """Serializer for recent beneficiaries (saved or unsaved)."""
+    id = serializers.UUIDField(required=False, allow_null=True)
+    beneficiary_type = serializers.CharField()
+    account_number = serializers.CharField()
+    account_name = serializers.CharField()
+    bank_code = serializers.CharField(allow_null=True, required=False)
+    bank_name = serializers.CharField(allow_null=True, required=False)
+    is_saved = serializers.BooleanField(default=False)
+    last_transaction_at = serializers.DateTimeField(required=False)

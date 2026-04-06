@@ -13,7 +13,8 @@ from drf_yasg import openapi
 from .models import Wallet, Transaction, Beneficiary
 from .serializers import (
     WalletSerializer, TransactionSerializer, BeneficiarySerializer,
-    BankAccountVerificationSerializer, TransferFundsSerializer
+    BankAccountVerificationSerializer, TransferFundsSerializer,
+    RecentBeneficiarySerializer
 )
 from core.models import AuditLog, Notification
 from users.models import User, DriverPayoutAccount
@@ -101,6 +102,11 @@ class BeneficiaryViewSet(viewsets.ModelViewSet):
         )
         instance.delete()
     
+    @swagger_auto_schema(
+        request_body=BankAccountVerificationSerializer,
+        responses={200: 'Account verified', 400: 'Invalid input'},
+        operation_description="Verify a bank account number and get its holder name."
+    )
     @action(detail=False, methods=['post'])
     def verify_account(self, request):
         """Verify a bank account number."""
@@ -125,6 +131,118 @@ class BeneficiaryViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error verifying account: {str(e)}", exc_info=True)
             return Response({'detail': 'An error occurred during verification.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        responses={200: RecentBeneficiarySerializer(many=True)},
+        operation_description="Get 5 most recent unique recipients from your completed transfers or withdrawals."
+    )
+    @action(detail=False, methods=['get'])
+    def recent(self, request):
+        """Get 5 most recent unique recipients from completed transfers/withdrawals."""
+        user = request.user
+        
+        # Get last 50 completed outgoing transactions to ensure we find enough unique recipients
+        transactions = Transaction.objects.filter(
+            wallet__user=user,
+            transaction_type__in=[Transaction.TransactionType.TRANSFER, Transaction.TransactionType.WITHDRAWAL],
+            status=Transaction.TransactionStatus.COMPLETED
+        ).select_related('recipient').order_by('-created_at')[:50]
+        
+        recent_recipients = []
+        seen = set()
+        
+        # Pre-fetch saved beneficiaries for matching to avoid N+1 queries
+        saved_beneficiaries = Beneficiary.objects.filter(owner=user)
+        beneficiary_map = {}
+        for b in saved_beneficiaries:
+            # Key by (account_number, bank_code)
+            key = (b.account_number, b.bank_code)
+            beneficiary_map[key] = b
+
+        for txn in transactions:
+            if len(recent_recipients) >= 5:
+                break
+                
+            rec_data = None
+            
+            if txn.recipient: # Internal transfer to another Paypadi user
+                # Primary identifier for users is their phone number (acting as account number)
+                phone = str(txn.recipient.phone_number)
+                # Normalize to 10 digits if needed, but here we use the full number
+                phone_10 = phone[-10:]
+                
+                # Check both full and 10-digit versions in seen/saved
+                key = (phone_10, None) 
+                if key in seen: continue
+                seen.add(key)
+                
+                saved = beneficiary_map.get(key) or beneficiary_map.get((phone, None))
+                if saved:
+                    rec_data = {
+                        'id': saved.id,
+                        'beneficiary_type': saved.beneficiary_type,
+                        'account_number': saved.account_number,
+                        'account_name': saved.account_name,
+                        'bank_code': saved.bank_code,
+                        'bank_name': saved.bank_name,
+                        'is_saved': True,
+                    }
+                else:
+                    rec_data = {
+                        'id': None,
+                        'beneficiary_type': 'user',
+                        'account_number': phone_10,
+                        'account_name': txn.recipient.get_full_name() or phone_10,
+                        'bank_code': None,
+                        'bank_name': 'Paypadi',
+                        'is_saved': False,
+                    }
+            
+            elif 'recipient_account' in txn.metadata: # External bank transfer
+                acc_no = txn.metadata.get('recipient_account')
+                bank_code = txn.metadata.get('recipient_bank_code')
+                
+                if not acc_no: continue
+                
+                key = (acc_no, bank_code)
+                if key in seen: continue
+                seen.add(key)
+                
+                saved = beneficiary_map.get(key)
+                if saved:
+                    rec_data = {
+                        'id': saved.id,
+                        'beneficiary_type': saved.beneficiary_type,
+                        'account_number': saved.account_number,
+                        'account_name': saved.account_name,
+                        'bank_code': saved.bank_code,
+                        'bank_name': saved.bank_name,
+                        'is_saved': True,
+                    }
+                else:
+                    # Try to get name from description or metadata if available
+                    name = txn.metadata.get('account_name')
+                    if not name and txn.description:
+                        # Common pattern: "Transfer to NAME" or "Withdrawal to NAME"
+                        if "to " in txn.description:
+                            name = txn.description.split("to ", 1)[1]
+                    
+                    rec_data = {
+                        'id': None,
+                        'beneficiary_type': 'bank',
+                        'account_number': acc_no,
+                        'account_name': name or 'Recipient',
+                        'bank_code': bank_code,
+                        'bank_name': txn.metadata.get('bank_name', 'Bank'),
+                        'is_saved': False,
+                    }
+            
+            if rec_data:
+                rec_data['last_transaction_at'] = txn.created_at
+                recent_recipients.append(rec_data)
+                
+        serializer = RecentBeneficiarySerializer(recent_recipients, many=True)
+        return Response(serializer.data)
 
 
 class DepositFundsView(APIView):
