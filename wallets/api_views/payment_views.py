@@ -62,12 +62,21 @@ class UserLookupView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
              
+            # Get 10-digit phone number (last 10 digits)
+            phone_str = str(user.phone_number)
+            ten_digit_phone = phone_str[-10:]
+            
+            # Prioritize virtual account number, fallback to 10-digit phone
+            account_number = ten_digit_phone
+            if hasattr(user, 'wallet') and user.wallet.virtual_account_number:
+                account_number = user.wallet.virtual_account_number
+                
             # Construct response
             data = {
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-                'phone_number': str(user.phone_number),
-                'account_number': str(user.phone_number),  # Frontend expects account_number
+                'phone_number': ten_digit_phone,
+                'account_number': account_number,
                 'role': user.role,
                 'profile_picture': user.profile.profile_picture.url if hasattr(user, 'profile') and user.profile.profile_picture else None
             }
