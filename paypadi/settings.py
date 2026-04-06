@@ -53,11 +53,11 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Paystack Configuration
-PAYSTACK_TEST_MODE = os.getenv('PAYSTACK_TEST_MODE', 'True') == 'True'  # Set to False in production
+PAYSTACK_TEST_MODE = os.getenv('PAYSTACK_TEST_MODE', 'True') == 'True'
 PAYSTACK_TEST_SECRET_KEY = os.getenv('PAYSTACK_TEST_SECRET_KEY')
 PAYSTACK_TEST_PUBLIC_KEY = os.getenv('PAYSTACK_TEST_PUBLIC_KEY')
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
-PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')  
+PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')
 
 # Twilio Configuration
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
@@ -71,7 +71,7 @@ PAYMENT_GATEWAY = 'paystack'
 PAYMENT_WEBHOOK_SECRET = os.getenv('PAYMENT_WEBHOOK_SECRET', 'paypadi2025')  # Keep a default for development
 
 # Callback URL for Paystack (for development)
-PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://a7f0f2228da4.ngrok-free.app/api/v1/wallets/payments/paystack/webhook/')
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://khidr.pythonanywhere.com/api/v1/wallets/payments/paystack/webhook/')
 
 # Custom user model
 AUTH_USER_MODEL = 'users.User'
@@ -165,8 +165,8 @@ MINIMUM_WALLET_BALANCE = 0  # Minimum allowed wallet balance (in kobo)
 TRANSFER_FEE_PERCENTAGE = 0  # 0% transfer fee
 
 # Payment Gateway Settings
-PAYMENT_GATEWAY = 'mock'  # Default to mock gateway for development
-PAYMENT_WEBHOOK_SECRET = 'your-webhook-secret-key-here'  # Change this in production
+PAYMENT_GATEWAY = 'paystack'  # Using actual Paystack gateway
+PAYMENT_WEBHOOK_SECRET = os.getenv('PAYMENT_WEBHOOK_SECRET')
 
 # Settlement account details (for payouts)
 SETTLEMENT_ACCOUNT_NUMBER = '0000000000'  # Replace with actual account number
