@@ -68,8 +68,11 @@ class UserLookupView(APIView):
             
             # Prioritize virtual account number, fallback to 10-digit phone
             account_number = ten_digit_phone
-            if hasattr(user, 'wallet') and user.wallet.virtual_account_number:
-                account_number = user.wallet.virtual_account_number
+            bank_code = None
+            if hasattr(user, 'wallet'):
+                if user.wallet.virtual_account_number:
+                    account_number = user.wallet.virtual_account_number
+                bank_code = user.wallet.virtual_bank_code
                 
             # Construct response
             data = {
@@ -77,6 +80,7 @@ class UserLookupView(APIView):
                 'last_name': user.last_name,
                 'phone_number': ten_digit_phone,
                 'account_number': account_number,
+                'bank_code': bank_code,
                 'role': user.role,
                 'profile_picture': user.profile.profile_picture.url if hasattr(user, 'profile') and user.profile.profile_picture else None
             }

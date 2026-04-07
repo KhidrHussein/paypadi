@@ -374,6 +374,7 @@ class UserLookupResponseSerializer(serializers.Serializer):
     last_name = serializers.CharField()
     phone_number = serializers.CharField()
     account_number = serializers.CharField()
+    bank_code = serializers.CharField(allow_null=True, required=False)
     profile_picture = serializers.CharField(allow_null=True)
     role = serializers.CharField()
 
