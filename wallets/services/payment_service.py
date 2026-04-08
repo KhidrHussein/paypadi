@@ -433,12 +433,11 @@ class PaymentService:
     def _build_callback_url(self, reference: str) -> str:
         """Build the callback URL for payment verification."""
         from django.urls import reverse
-        from django.contrib.sites.models import Site
+        from django.conf import settings
         
-        try:
-            domain = Site.objects.get_current().domain
-        except:
-            domain = 'example.com'  # Fallback for testing
+        domain = 'example.com'
+        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != '*':
+            domain = settings.ALLOWED_HOSTS[0]
             
         # Fix: Ensure we construct a valid URL even if reverse fails or site is not set
         try:

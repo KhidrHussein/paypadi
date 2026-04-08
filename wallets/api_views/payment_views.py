@@ -417,6 +417,11 @@ class TransactionHistoryView(APIView):
                 {'detail': 'Wallet not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        except getattr(__import__('rest_framework').exceptions, 'NotFound') as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Error retrieving transaction history: {str(e)}", exc_info=True)
             return Response(
