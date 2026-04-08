@@ -30,6 +30,7 @@ def get_payment_gateway(gateway_name: str = None) -> Type['PaymentGateway']:
     # Map of gateway names to their module paths
     gateway_map = {
         'mock': 'wallets.payment_gateways.mock.MockPaymentGateway',
+        'paystack': 'wallets.payment_gateways.paystack.PaystackGateway',
         # Add other gateways here as needed
     }
     
