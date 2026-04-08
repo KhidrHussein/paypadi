@@ -63,16 +63,57 @@ class TransactionSerializer(serializers.ModelSerializer):
         help_text="Recipient's bank code (required for bank transfers)"
     )
     
+    sender_name = serializers.SerializerMethodField()
+    recipient_name = serializers.SerializerMethodField()
+    fee_amount = serializers.SerializerMethodField()
+    
     class Meta:
         model = Transaction
         fields = [
             'id', 'amount', 'transaction_type', 'status', 'reference',
             'description', 'metadata', 'created_at', 'recipient_phone',
-            'recipient_account_number', 'recipient_bank_code'
+            'recipient_account_number', 'recipient_bank_code',
+            'sender_name', 'recipient_name', 'fee_amount'
         ]
         read_only_fields = [
-            'id', 'status', 'reference', 'metadata', 'created_at'
+            'id', 'status', 'reference', 'metadata', 'created_at',
+            'sender_name', 'recipient_name', 'fee_amount'
         ]
+    
+    def get_sender_name(self, obj):
+        if obj.transaction_type == Transaction.TransactionType.DEPOSIT:
+            return "Self"
+        if obj.reference.startswith("REC-"):
+            if obj.recipient:
+                return obj.recipient.get_full_name() or str(obj.recipient.phone_number)
+            return obj.metadata.get('sender_phone') if obj.metadata else "Unknown Sender"
+        return obj.wallet.user.get_full_name() or str(obj.wallet.user.phone_number)
+
+    def get_recipient_name(self, obj):
+        if obj.transaction_type == Transaction.TransactionType.DEPOSIT:
+            return "Self"
+        if obj.reference.startswith("REC-"):
+            return obj.wallet.user.get_full_name() or str(obj.wallet.user.phone_number)
+        if obj.recipient:
+            return obj.recipient.get_full_name() or str(obj.recipient.phone_number)
+        if obj.metadata:
+            return obj.metadata.get('recipient_name') or obj.metadata.get('account_name') or "Unknown Recipient"
+        return "Unknown Recipient"
+
+    def get_fee_amount(self, obj):
+        if obj.metadata and 'fee' in obj.metadata:
+            return str(obj.metadata['fee'])
+        return "0.00"
+
+    def to_representation(self, instance):
+        """Scrub backend errors from the metadata so frontend doesn't see them."""
+        representation = super().to_representation(instance)
+        metadata = representation.get('metadata')
+        if isinstance(metadata, dict) and 'error' in metadata:
+            import copy
+            representation['metadata'] = copy.deepcopy(metadata)
+            representation['metadata'].pop('error', None)
+        return representation
     
     def validate(self, attrs):
         request = self.context.get('request')
