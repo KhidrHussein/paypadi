@@ -83,8 +83,8 @@ class PaymentService:
             
             # Update transaction with gateway reference if available
             if 'data' in result and 'reference' in result['data']:
-                transaction.gateway_reference = result['data']['reference']
-                transaction.save(update_fields=['gateway_reference'])
+                transaction.metadata['gateway_reference'] = result['data']['reference']
+                transaction.save(update_fields=['metadata'])
             
             return {
                 'status': True,

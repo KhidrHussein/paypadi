@@ -438,16 +438,11 @@ class TransactionHistoryView(APIView):
         page = paginator.paginate_queryset(queryset, self.request)
         
         if page is not None:
+            self.paginator = paginator
             return page
         
         return queryset
     
     def get_paginated_response(self, data):
         """Return a paginated response."""
-        from rest_framework.response import Response
-        from rest_framework.pagination import PageNumberPagination
-        
-        paginator = PageNumberPagination()
-        paginator.page_size = self.request.query_params.get('page_size', 20)
-        
-        return paginator.get_paginated_response(data)
+        return self.paginator.get_paginated_response(data)
