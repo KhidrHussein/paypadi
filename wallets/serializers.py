@@ -112,9 +112,10 @@ class BeneficiarySerializer(serializers.ModelSerializer):
         allow_null=True
     )
     bank_name = serializers.CharField(
-        read_only=True,
-        help_text="Bank name (auto-filled from bank code)",
-        allow_blank=True
+        required=False,
+        help_text="Bank name (usually supplied by frontend)",
+        allow_blank=True,
+        allow_null=True
     )
     account_name = serializers.CharField(
         required=True,
@@ -128,7 +129,7 @@ class BeneficiarySerializer(serializers.ModelSerializer):
             'bank_code', 'bank_name', 'is_verified', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'bank_name', 'is_verified', 'created_at', 'updated_at'
+            'id', 'is_verified', 'created_at', 'updated_at'
         ]
     
     def validate(self, attrs):
