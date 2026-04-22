@@ -96,7 +96,7 @@ class BeneficiaryViewSet(viewsets.ModelViewSet):
             user_agent=self.request.META.get('HTTP_USER_AGENT'),
             data={
                 'beneficiary_id': str(instance.id),
-                'name': instance.name,
+                'name': instance.account_name,
                 'type': instance.beneficiary_type
             }
         )

@@ -94,7 +94,10 @@ class PaymentService:
                     'authorization_url': result.get('data', {}).get('authorization_url', ''),
                     'reference': reference,
                     'amount': str(amount),
-                    'transaction_id': str(transaction.id)
+                    'transaction_id': str(transaction.id),
+                    'created_at': transaction.created_at.isoformat(),
+                    'payment_type': transaction_type,
+                    'transaction_type': transaction_type
                 }
             }
             
@@ -265,9 +268,9 @@ class PaymentService:
                 }
             )
             
-            # Deduct funds immediately to prevent double spending
-            wallet.balance -= amount
-            wallet.save(update_fields=['balance'])
+            # Reserve funds instead of deducting balance immediately to prevent double spending
+            wallet.reserved_balance += amount
+            wallet.save(update_fields=['reserved_balance'])
             
         try:
             # Initiate transfer with payment gateway
@@ -296,7 +299,11 @@ class PaymentService:
                 if result.get('data', {}).get('status', '').lower() == TransactionStatus.SUCCESSFUL:
                     transaction.status = Transaction.TransactionStatus.COMPLETED
                     transaction.metadata['completed_at'] = str(timezone.now())
-                    # Balance already deducted
+                    
+                    # Deduct from actual balance and release reserved
+                    wallet.balance -= amount
+                    wallet.reserved_balance -= amount
+                    wallet.save(update_fields=['balance', 'reserved_balance'])
                 
                 transaction.save(
                     update_fields=[
@@ -313,7 +320,11 @@ class PaymentService:
                     'status': transaction.status,
                     'amount': str(amount),
                     'recipient_account': recipient_account,
-                    'transaction_id': str(transaction.id)
+                    'transaction_id': str(transaction.id),
+                    'reference': reference,
+                    'created_at': transaction.created_at.isoformat(),
+                    'payment_type': transaction_type,
+                    'transaction_type': transaction_type
                 }
             }
                 
