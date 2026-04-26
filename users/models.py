@@ -283,6 +283,7 @@ class DriverProfile(models.Model):
     driver_license_expiry = models.DateField(blank=True, null=True)
     license_front = models.ImageField(upload_to='driver_licenses/', null=True, blank=True)
     license_back = models.ImageField(upload_to='driver_licenses/', null=True, blank=True)
+    vehicle_registration = models.ImageField(upload_to='vehicle_docs/', null=True, blank=True)
     submitted_for_approval = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=False)
     approved_at = models.DateTimeField(null=True, blank=True)

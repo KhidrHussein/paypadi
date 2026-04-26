@@ -214,7 +214,7 @@ class DriverProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vehicle_make', 'vehicle_model', 'vehicle_year',
             'driver_license_number', 'driver_license_expiry', 'license_plate',
-            'license_front', 'license_back', 'submitted_for_approval',
+            'license_front', 'license_back', 'vehicle_registration', 'submitted_for_approval',
             'is_approved', 'approved_at', 'rejection_reason',
             'is_available', 'current_location_lat', 
             'current_location_lng', 'rating', 'total_rides', 'created_at',

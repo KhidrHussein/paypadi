@@ -834,9 +834,10 @@ class DriverProfileView(generics.RetrieveUpdateAPIView):
                 instance.driver_license_expiry,
                 instance.license_front,
                 instance.license_back,
+                instance.vehicle_registration,
             ]):
                 return Response(
-                    {"detail": "All license fields (number, expiry, front, and back) must be completed before submission"},
+                    {"detail": "All license fields (driver's license front/back and vehicle license) must be completed before submission"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
