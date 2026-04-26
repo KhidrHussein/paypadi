@@ -281,7 +281,12 @@ class DriverProfile(models.Model):
     license_plate = models.CharField(max_length=20, unique=True, blank=True, null=True)
     driver_license_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
     driver_license_expiry = models.DateField(blank=True, null=True)
+    license_front = models.ImageField(upload_to='driver_licenses/', null=True, blank=True)
+    license_back = models.ImageField(upload_to='driver_licenses/', null=True, blank=True)
+    submitted_for_approval = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, null=True)
     is_available = models.BooleanField(default=True)
     current_location_lat = models.DecimalField(
         max_digits=9, 

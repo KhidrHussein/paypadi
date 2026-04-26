@@ -260,13 +260,6 @@ class OTPVerifyView(APIView):
                 {"detail": "Invalid OTP"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        if refresh:
-            response_data.update({
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-            })
-        
-        return Response(response_data)
 
 
 class UserRegistrationView(APIView):
@@ -837,15 +830,13 @@ class DriverProfileView(generics.RetrieveUpdateAPIView):
                 instance.vehicle_make,
                 instance.vehicle_model,
                 instance.vehicle_year,
-                instance.license_number,
-                instance.license_expiry_date,
+                instance.driver_license_number,
+                instance.driver_license_expiry,
                 instance.license_front,
                 instance.license_back,
-                instance.vehicle_insurance,
-                instance.vehicle_registration
             ]):
                 return Response(
-                    {"detail": "All driver profile fields must be completed before submission"},
+                    {"detail": "All license fields (number, expiry, front, and back) must be completed before submission"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
