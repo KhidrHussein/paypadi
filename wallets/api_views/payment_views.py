@@ -254,25 +254,28 @@ class TransferFundsView(APIView):
                 )
                 recipient_account_number = beneficiary.account_number
                 recipient_bank_code = beneficiary.bank_code
-                if beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
-                    core_acc = ''.join(filter(str.isdigit, str(beneficiary.account_number)))
-                    if len(core_acc) >= 10:
-                        core_acc = core_acc[-10:]
-                        
-                    recipient_user = None
-                    if core_acc:
-                        recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
+                # First try resolving as a virtual account
+                wallet = Wallet.objects.filter(
+                    virtual_account_number=beneficiary.account_number
+                ).first()
+                if wallet and (not beneficiary.bank_code or wallet.virtual_bank_code == beneficiary.bank_code):
+                    recipient_user = wallet.user
+                
+                # If not a virtual account, check if it's an internal user by phone
+                if not recipient_user:
+                    is_internal_bank = not beneficiary.bank_code or str(beneficiary.bank_code).lower() in ['paypadi', 'internal']
+                    if is_internal_bank or beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
+                        core_acc = ''.join(filter(str.isdigit, str(beneficiary.account_number)))
+                        if len(core_acc) >= 10:
+                            core_acc = core_acc[-10:]
+                            if core_acc:
+                                recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
+                                
+                if not recipient_user and beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
+                    return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
                     
-                    if not recipient_user:
-                        wallet = Wallet.objects.filter(virtual_account_number=beneficiary.account_number).first()
-                        if wallet:
-                            recipient_user = wallet.user
-                    
-                    if not recipient_user:
-                        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-                        
-                    if not recipient_user.is_active:
-                        return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
+                if recipient_user and not recipient_user.is_active:
+                    return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
             except Beneficiary.DoesNotExist:
                 return Response(
                     {"beneficiary_id": ["Invalid or unverified beneficiary"]},
@@ -375,18 +378,13 @@ class TransferFundsView(APIView):
                         pass
                     
                     return Response({
-                        "status": True, 
-                        "message": "Transfer successful",
-                        "data": {
-                            "transaction_reference": reference,
-                            "status": txn_out.status,
-                            "amount": str(amount),
-                            "recipient": str(recipient_user.phone_number),
-                            "recipient_name": recipient_user.get_full_name() or str(recipient_user.phone_number),
-                            "created_at": txn_out.created_at.isoformat(),
-                            "payment_type": txn_out.transaction_type,
-                            "transaction_type": txn_out.transaction_type
-                        }
+                        "status": "success", "message": "Transfer successful",
+                        "reference": reference, "amount": amount,
+                        "recipient": str(recipient_user.phone_number),
+                        "recipient_name": recipient_user.get_full_name() or str(recipient_user.phone_number),
+                        "created_at": txn_out.created_at.isoformat(),
+                        "payment_type": txn_out.transaction_type,
+                        "transaction_type": txn_out.transaction_type
                     })
             except Exception as e:
                 logger.error(f"Internal Transfer failed: {str(e)}", exc_info=True)
