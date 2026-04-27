@@ -242,7 +242,11 @@ class BeneficiaryViewSet(viewsets.ModelViewSet):
                 recent_recipients.append(rec_data)
                 
         serializer = RecentBeneficiarySerializer(recent_recipients, many=True)
-        return Response(serializer.data)
+        return Response({
+            'status': True,
+            'message': 'Recent beneficiaries retrieved successfully',
+            'data': serializer.data
+        })
 
 
 class DepositFundsView(APIView):
