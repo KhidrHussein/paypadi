@@ -233,7 +233,11 @@ class TransferFundsView(APIView):
         serializer = TransferFundsSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
             logger.warning(f"Transfer validation failed: {serializer.errors}")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "status": False,
+                "message": "Validation failed",
+                "data": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         amount = serializer.validated_data['amount']
         description = serializer.validated_data.get('description', '')
@@ -272,15 +276,24 @@ class TransferFundsView(APIView):
                                 recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
                                 
                 if not recipient_user and beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
-                    return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                    return Response({
+                        "status": False,
+                        "message": "User not found.",
+                        "data": None
+                    }, status=status.HTTP_404_NOT_FOUND)
                     
                 if recipient_user and not recipient_user.is_active:
-                    return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({
+                        "status": False,
+                        "message": "Recipient account is not active.",
+                        "data": None
+                    }, status=status.HTTP_400_BAD_REQUEST)
             except Beneficiary.DoesNotExist:
-                return Response(
-                    {"beneficiary_id": ["Invalid or unverified beneficiary"]},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    "status": False,
+                    "message": "Invalid or unverified beneficiary",
+                    "data": None
+                }, status=status.HTTP_400_BAD_REQUEST)
         else:
             recipient_phone = serializer.validated_data.get('recipient_phone')
             recipient_account_number = serializer.validated_data.get('recipient_account_number')
@@ -301,9 +314,17 @@ class TransferFundsView(APIView):
                         recipient_user = wallet.user
                 
                 if not recipient_user:
-                    return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                    return Response({
+                        "status": False,
+                        "message": "User not found.",
+                        "data": None
+                    }, status=status.HTTP_404_NOT_FOUND)
                 if not recipient_user.is_active:
-                    return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({
+                        "status": False,
+                        "message": "Recipient account is not active.",
+                        "data": None
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             # 2. If no recipient_phone, check if recipient_account_number is an internal user
             elif recipient_account_number:
@@ -330,7 +351,11 @@ class TransferFundsView(APIView):
             from django.utils import timezone
             
             if recipient_user == request.user:
-                 return Response({"detail": "Cannot transfer to yourself"}, status=status.HTTP_400_BAD_REQUEST)
+                 return Response({
+                     "status": False,
+                     "message": "Cannot transfer to yourself",
+                     "data": None
+                 }, status=status.HTTP_400_BAD_REQUEST)
                  
             try:
                 with transaction.atomic():
@@ -342,7 +367,11 @@ class TransferFundsView(APIView):
                     recipient_wallet = Wallet.objects.get(user=recipient_user)
                     
                     if wallet.available_balance < amount:
-                        return Response({"amount": ["Insufficient balance"]}, status=status.HTTP_400_BAD_REQUEST)
+                        return Response({
+                            "status": False,
+                            "message": "Insufficient balance",
+                            "data": None
+                        }, status=status.HTTP_400_BAD_REQUEST)
                     
                     reference = f"TRF-{timezone.now().strftime('%Y%m%d%H%M%S')}-{request.user.id}"
                     
@@ -388,12 +417,20 @@ class TransferFundsView(APIView):
                     })
             except Exception as e:
                 logger.error(f"Internal Transfer failed: {str(e)}", exc_info=True)
-                return Response({"detail": "Transfer failed", 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({
+                    "status": False,
+                    "message": "Transfer failed",
+                    "data": {"error": str(e)}
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # External Transfer
         else:
             if not recipient_account_number or not recipient_bank_code:
-                 return Response({"detail": "Recipient account number and bank code required for external transfer."}, status=status.HTTP_400_BAD_REQUEST)
+                 return Response({
+                     "status": False,
+                     "message": "Recipient account number and bank code required for external transfer.",
+                     "data": None
+                 }, status=status.HTTP_400_BAD_REQUEST)
                  
             try:
                 payment_service = PaymentService()
@@ -410,15 +447,31 @@ class TransferFundsView(APIView):
                 return Response(result, status=status.HTTP_200_OK)
                 
             except InsufficientFundsError as e:
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": False,
+                    "message": str(e),
+                    "data": None
+                }, status=status.HTTP_400_BAD_REQUEST)
             except InvalidAccountError as e:
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": False,
+                    "message": str(e),
+                    "data": None
+                }, status=status.HTTP_400_BAD_REQUEST)
             except PaymentError as e:
                 logger.error(f"Funds transfer failed: {str(e)}")
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": False,
+                    "message": str(e),
+                    "data": None
+                }, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.error(f"Unexpected error in funds transfer: {str(e)}", exc_info=True)
-                return Response({'detail': 'An error occurred while processing your request.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({
+                    "status": False,
+                    "message": "An error occurred while processing your request.",
+                    "data": None
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyBankAccountView(APIView):

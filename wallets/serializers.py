@@ -253,9 +253,9 @@ class TransferFundsSerializer(serializers.Serializer):
         beneficiary_id = attrs.get('beneficiary_id')
 
         # Check if either beneficiary_id or recipient details are provided
-        if not any([beneficiary_id, recipient_phone, (recipient_account and recipient_bank)]):
+        if not any([beneficiary_id, recipient_phone, recipient_account]):
             raise serializers.ValidationError(
-                "Either beneficiary_id or recipient details (phone or account+bank) must be provided."
+                "Either beneficiary_id or recipient details (phone or account number) must be provided."
             )
 
         # If beneficiary_id is provided, no need for other recipient details
