@@ -232,6 +232,7 @@ class TransferFundsView(APIView):
         """Transfer funds to another account."""
         serializer = TransferFundsSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
+            logger.warning(f"Transfer validation failed: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         amount = serializer.validated_data['amount']

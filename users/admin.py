@@ -1,8 +1,29 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.contrib.auth.forms import UserChangeForm as BaseUserChangeForm, UserCreationForm
 from django.utils.translation import gettext_lazy as _
 from .models import User, UserProfile, DriverProfile, OTP
+
+
+class UserChangeForm(BaseUserChangeForm):
+    new_transaction_pin = forms.CharField(
+        required=False,
+        help_text="Set a new transaction PIN (4-6 digits). Leave blank to keep current PIN.",
+        widget=forms.PasswordInput(render_value=False)
+    )
+
+    class Meta(BaseUserChangeForm.Meta):
+        model = User
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        new_pin = self.cleaned_data.get('new_transaction_pin')
+        if new_pin:
+            user.set_transaction_pin(new_pin)
+        if commit:
+            user.save()
+        return user
 
 
 class UserAdmin(BaseUserAdmin):
@@ -14,7 +35,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = ('phone_number', 'email', 'first_name', 'last_name', 'is_staff')
     list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups')
     fieldsets = (
-        (None, {'fields': ('phone_number', 'password')}),
+        (None, {'fields': ('phone_number', 'password', 'new_transaction_pin')}),
         (_('Personal info'), {'fields': ('first_name', 'last_name', 'email')}),
         (_('Permissions'), {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
