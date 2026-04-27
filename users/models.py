@@ -127,6 +127,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     def check_transaction_pin(self, raw_pin):
         """Check if the provided pin is correct."""
+        if not self.transaction_pin_hash:
+            return False
         from django.contrib.auth.hashers import check_password
         return check_password(raw_pin, self.transaction_pin_hash)
     

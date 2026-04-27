@@ -280,6 +280,8 @@ class TransferFundsSerializer(serializers.Serializer):
         # Verify transaction PIN
         user = self.context['request'].user
         pin = attrs.get('pin')
+        if not user.transaction_pin_hash:
+            raise serializers.ValidationError({"pin": "Transaction PIN not set. Please set a PIN before transferring funds."})
         if not user.check_transaction_pin(pin):
             raise serializers.ValidationError({"pin": "Invalid transaction PIN"})
 
