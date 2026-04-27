@@ -357,13 +357,18 @@ class TransferFundsView(APIView):
                         pass
                     
                     return Response({
-                        "status": "success", "message": "Transfer successful",
-                        "reference": reference, "amount": amount,
-                        "recipient": str(recipient_user.phone_number),
-                        "recipient_name": recipient_user.get_full_name(),
-                        "created_at": txn_out.created_at.isoformat(),
-                        "payment_type": txn_out.transaction_type,
-                        "transaction_type": txn_out.transaction_type
+                        "status": True, 
+                        "message": "Transfer successful",
+                        "data": {
+                            "transaction_reference": reference,
+                            "status": txn_out.status,
+                            "amount": str(amount),
+                            "recipient": str(recipient_user.phone_number),
+                            "recipient_name": recipient_user.get_full_name(),
+                            "created_at": txn_out.created_at.isoformat(),
+                            "payment_type": txn_out.transaction_type,
+                            "transaction_type": txn_out.transaction_type
+                        }
                     })
             except Exception as e:
                 logger.error(f"Internal Transfer failed: {str(e)}", exc_info=True)
