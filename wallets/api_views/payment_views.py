@@ -283,12 +283,12 @@ class TransferFundsView(APIView):
             recipient_account_number = serializer.validated_data.get('recipient_account_number')
             recipient_bank_code = serializer.validated_data.get('recipient_bank_code')
             
+            # 1. Try to resolve via recipient_phone
             if recipient_phone:
                 core_phone = ''.join(filter(str.isdigit, str(recipient_phone)))
                 if len(core_phone) >= 10:
                     core_phone = core_phone[-10:]
-                    
-                recipient_user = None
+                
                 if core_phone:
                     recipient_user = User.objects.filter(phone_number__icontains=core_phone).first()
                 
@@ -299,9 +299,27 @@ class TransferFundsView(APIView):
                 
                 if not recipient_user:
                     return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-                    
                 if not recipient_user.is_active:
                     return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 2. If no recipient_phone, check if recipient_account_number is an internal user
+            elif recipient_account_number:
+                # Check if it's a virtual account belonging to a user
+                wallet = Wallet.objects.filter(
+                    virtual_account_number=recipient_account_number
+                ).first()
+                
+                if wallet and (not recipient_bank_code or wallet.virtual_bank_code == recipient_bank_code):
+                    recipient_user = wallet.user
+                else:
+                    # Check if the account number is a phone number and the bank code implies internal transfer
+                    is_internal_bank = not recipient_bank_code or str(recipient_bank_code).lower() in ['paypadi', 'internal']
+                    if is_internal_bank:
+                        core_id = ''.join(filter(str.isdigit, str(recipient_account_number)))
+                        if len(core_id) >= 10:
+                            core_id = core_id[-10:]
+                            if core_id:
+                                recipient_user = User.objects.filter(phone_number__icontains=core_id).first()
 
         # Internal Transfer
         if recipient_user:
@@ -364,7 +382,7 @@ class TransferFundsView(APIView):
                             "status": txn_out.status,
                             "amount": str(amount),
                             "recipient": str(recipient_user.phone_number),
-                            "recipient_name": recipient_user.get_full_name(),
+                            "recipient_name": recipient_user.get_full_name() or str(recipient_user.phone_number),
                             "created_at": txn_out.created_at.isoformat(),
                             "payment_type": txn_out.transaction_type,
                             "transaction_type": txn_out.transaction_type
