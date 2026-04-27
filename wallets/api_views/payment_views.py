@@ -57,6 +57,9 @@ class UserLookupView(APIView):
         if len(core_number) >= 10:
             core_number = core_number[-10:]
             
+        if not core_number:
+            return Response({'detail': 'Invalid phone number or account number format.'}, status=status.HTTP_400_BAD_REQUEST)
+            
         try:
             # Flexible query: search using the core 10-digit number
             user = User.objects.filter(phone_number__icontains=core_number).first()
@@ -70,6 +73,12 @@ class UserLookupView(APIView):
                 return Response(
                     {'detail': 'User not found'},
                     status=status.HTTP_404_NOT_FOUND
+                )
+                
+            if not user.is_active:
+                return Response(
+                    {'detail': 'User account is not active.'},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
              
             # Get 10-digit phone number (last 10 digits)
@@ -248,7 +257,10 @@ class TransferFundsView(APIView):
                     core_acc = ''.join(filter(str.isdigit, str(beneficiary.account_number)))
                     if len(core_acc) >= 10:
                         core_acc = core_acc[-10:]
-                    recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
+                        
+                    recipient_user = None
+                    if core_acc:
+                        recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
                     
                     if not recipient_user:
                         wallet = Wallet.objects.filter(virtual_account_number=beneficiary.account_number).first()
@@ -257,6 +269,9 @@ class TransferFundsView(APIView):
                     
                     if not recipient_user:
                         return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                        
+                    if not recipient_user.is_active:
+                        return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
             except Beneficiary.DoesNotExist:
                 return Response(
                     {"beneficiary_id": ["Invalid or unverified beneficiary"]},
@@ -271,7 +286,10 @@ class TransferFundsView(APIView):
                 core_phone = ''.join(filter(str.isdigit, str(recipient_phone)))
                 if len(core_phone) >= 10:
                     core_phone = core_phone[-10:]
-                recipient_user = User.objects.filter(phone_number__icontains=core_phone).first()
+                    
+                recipient_user = None
+                if core_phone:
+                    recipient_user = User.objects.filter(phone_number__icontains=core_phone).first()
                 
                 if not recipient_user:
                     wallet = Wallet.objects.filter(virtual_account_number=recipient_phone).first()
@@ -280,6 +298,9 @@ class TransferFundsView(APIView):
                 
                 if not recipient_user:
                     return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                    
+                if not recipient_user.is_active:
+                    return Response({"detail": "Recipient account is not active."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Internal Transfer
         if recipient_user:
