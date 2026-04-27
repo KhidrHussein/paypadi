@@ -62,6 +62,11 @@ class UserLookupView(APIView):
             user = User.objects.filter(phone_number__icontains=core_number).first()
             
             if not user:
+                wallet = Wallet.objects.filter(virtual_account_number=phone_number).first()
+                if wallet:
+                    user = wallet.user
+                    
+            if not user:
                 return Response(
                     {'detail': 'User not found'},
                     status=status.HTTP_404_NOT_FOUND
@@ -246,6 +251,11 @@ class TransferFundsView(APIView):
                     recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
                     
                     if not recipient_user:
+                        wallet = Wallet.objects.filter(virtual_account_number=beneficiary.account_number).first()
+                        if wallet:
+                            recipient_user = wallet.user
+                    
+                    if not recipient_user:
                         return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
             except Beneficiary.DoesNotExist:
                 return Response(
@@ -262,6 +272,11 @@ class TransferFundsView(APIView):
                 if len(core_phone) >= 10:
                     core_phone = core_phone[-10:]
                 recipient_user = User.objects.filter(phone_number__icontains=core_phone).first()
+                
+                if not recipient_user:
+                    wallet = Wallet.objects.filter(virtual_account_number=recipient_phone).first()
+                    if wallet:
+                        recipient_user = wallet.user
                 
                 if not recipient_user:
                     return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
