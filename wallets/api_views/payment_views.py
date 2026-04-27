@@ -52,9 +52,14 @@ class UserLookupView(APIView):
         
         phone_number = serializer.validated_data.get('phone_number') or serializer.validated_data.get('account_number')
         
+        # Extract the core digits to ensure flexible matching (e.g., removing leading '0' or country codes)
+        core_number = ''.join(filter(str.isdigit, str(phone_number)))
+        if len(core_number) >= 10:
+            core_number = core_number[-10:]
+            
         try:
-            # Flexible query: assume numbers might come with or without + or leading 0s
-            user = User.objects.filter(phone_number__icontains=phone_number).first()
+            # Flexible query: search using the core 10-digit number
+            user = User.objects.filter(phone_number__icontains=core_number).first()
             
             if not user:
                 return Response(
