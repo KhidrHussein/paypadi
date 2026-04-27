@@ -240,7 +240,13 @@ class TransferFundsView(APIView):
                 recipient_account_number = beneficiary.account_number
                 recipient_bank_code = beneficiary.bank_code
                 if beneficiary.beneficiary_type == Beneficiary.BeneficiaryType.USER:
-                    recipient_user = User.objects.filter(phone_number__icontains=beneficiary.account_number).first()
+                    core_acc = ''.join(filter(str.isdigit, str(beneficiary.account_number)))
+                    if len(core_acc) >= 10:
+                        core_acc = core_acc[-10:]
+                    recipient_user = User.objects.filter(phone_number__icontains=core_acc).first()
+                    
+                    if not recipient_user:
+                        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
             except Beneficiary.DoesNotExist:
                 return Response(
                     {"beneficiary_id": ["Invalid or unverified beneficiary"]},
@@ -252,7 +258,13 @@ class TransferFundsView(APIView):
             recipient_bank_code = serializer.validated_data.get('recipient_bank_code')
             
             if recipient_phone:
-                recipient_user = User.objects.filter(phone_number__icontains=recipient_phone).first()
+                core_phone = ''.join(filter(str.isdigit, str(recipient_phone)))
+                if len(core_phone) >= 10:
+                    core_phone = core_phone[-10:]
+                recipient_user = User.objects.filter(phone_number__icontains=core_phone).first()
+                
+                if not recipient_user:
+                    return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # Internal Transfer
         if recipient_user:
