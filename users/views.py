@@ -883,6 +883,75 @@ class CurrentUserView(APIView):
         return Response(serializer.data)
 
 
+class ListBanksView(APIView):
+    """
+    List all supported banks from Paystack.
+    
+    This endpoint returns a list of banks that can be used for bank account verification.
+    It is publicly accessible and doesn't require authentication.
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    @swagger_auto_schema(
+        operation_description="List all supported banks",
+        responses={
+            200: "List of banks retrieved successfully",
+            400: "Failed to fetch banks"
+        }
+    )
+    def get(self, request):
+        paystack_secret_key = settings.PAYSTACK_SECRET_KEY
+        headers = {
+            'Authorization': f'Bearer {paystack_secret_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            # Fetch banks from Paystack
+            response = requests.get(
+                'https://api.paystack.co/bank',
+                headers=headers,
+                params={'currency': 'NGN'}  # Filter for Nigerian banks
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('status') and data.get('data'):
+                # Return a simplified version of the bank data
+                banks = [{
+                    'name': bank['name'],
+                    'code': bank['code'],
+                    'active': bank['active']
+                } for bank in data['data']]
+                
+                return Response({
+                    'status': True,
+                    'message': 'Banks retrieved successfully',
+                    'data': banks
+                })
+                
+            return Response({
+                'status': False,
+                'message': 'No banks found',
+                'data': []
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        except requests.exceptions.RequestException as e:
+            error_message = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', str(e))
+                except ValueError:
+                    error_message = e.response.text or str(e)
+            
+            return Response({
+                'status': False,
+                'message': f'Failed to fetch banks: {error_message}',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
     """ViewSet for managing driver payout accounts."""
     serializer_class = DriverPayoutAccountSerializer
@@ -985,59 +1054,3 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
         account.save()
         return Response({'status': 'account verified'})
         
-    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
-    def list_banks(self, request):        
-        """
-        List all supported banks from Paystack.
-        This endpoint returns a list of banks that can be used for bank account verification.
-        """
-        paystack_secret_key = settings.PAYSTACK_SECRET_KEY
-        headers = {
-            'Authorization': f'Bearer {paystack_secret_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        try:
-            # Fetch banks from Paystack
-            response = requests.get(
-                'https://api.paystack.co/bank',
-                headers=headers,
-                params={'currency': 'NGN'}  # Filter for Nigerian banks
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            if data.get('status') and data.get('data'):
-                # Return a simplified version of the bank data
-                banks = [{
-                    'name': bank['name'],
-                    'code': bank['code'],
-                    'active': bank['active']
-                } for bank in data['data']]
-                
-                return Response({
-                    'status': True,
-                    'message': 'Banks retrieved successfully',
-                    'data': banks
-                })
-                
-            return Response({
-                'status': False,
-                'message': 'No banks found',
-                'data': []
-            }, status=status.HTTP_404_NOT_FOUND)
-            
-        except requests.exceptions.RequestException as e:
-            error_message = str(e)
-            if hasattr(e, 'response') and e.response is not None:
-                try:
-                    error_data = e.response.json()
-                    error_message = error_data.get('message', str(e))
-                except ValueError:
-                    error_message = e.response.text or str(e)
-            
-            return Response({
-                'status': False,
-                'message': f'Failed to fetch banks: {error_message}',
-                'data': None
-            }, status=status.HTTP_400_BAD_REQUEST)

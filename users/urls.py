@@ -15,6 +15,9 @@ urlpatterns = [
     path('otp/request/', views.OTPRequestView.as_view(), name='otp-request'),
     path('otp/verify/', views.OTPVerifyView.as_view(), name='otp-verify'),
     
+    # Public bank list
+    path('banks/', views.ListBanksView.as_view(), name='list-banks'),
+    
     # User profile - using UserProfileView for both retrieve and update
     path('profile/', views.UserProfileView.as_view(), name='user-profile'),
     
