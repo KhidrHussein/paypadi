@@ -8,6 +8,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from django.conf import settings
 from django.core.cache import cache
+from django.core import signing
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 
@@ -203,7 +204,7 @@ class OTPVerifyView(APIView):
         code = serializer.validated_data['code']
         purpose = serializer.validated_data['purpose']
         
-        # Verify OTP
+        # Verify OTP (OTPManager.verify_otp also marks the OTP as used)
         from core.models import OTPManager
         is_valid, error = OTPManager.verify_otp(phone_number, code, purpose)
         
@@ -224,42 +225,30 @@ class OTPVerifyView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        try:
-            # Mark OTP as used
-            otp = OTP.objects.get(phone_number=phone_number, code=code, purpose=purpose)
-            otp.is_used = True
-            otp.used_at = timezone.now()
-            otp.save()
-            
-            # Set session variables for registration flow
-            request.session['phone_verified'] = True
-            request.session['verified_phone'] = str(phone_number)
-            request.session.set_expiry(300)  # 5 minutes expiry
-            request.session.save()  # Explicitly save the session
-            
-            # Log successful verification
-            AuditLog.log_action(
-                action='otp_verified',
-                user=None,
-                ip_address=request.META.get('REMOTE_ADDR'),
-                user_agent=request.META.get('HTTP_USER_AGENT'),
-                data={
-                    'phone_number': str(phone_number), 
-                    'purpose': purpose,
-                    'session_id': request.session.session_key
-                }
-            )
-            
-            return Response({
-                "detail": "OTP verified successfully",
-                "session_id": request.session.session_key  # For debugging
-            })
-            
-        except OTP.DoesNotExist:
-            return Response(
-                {"detail": "Invalid OTP"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Issue a short-lived signed token the client passes to /register/
+        # This avoids relying on Django sessions (which break for stateless REST clients).
+        phone_token = signing.dumps(
+            {'phone_number': str(phone_number), 'purpose': purpose},
+            salt='otp_verified',
+            compress=True
+        )
+        
+        # Log successful verification
+        AuditLog.log_action(
+            action='otp_verified',
+            user=None,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT'),
+            data={
+                'phone_number': str(phone_number),
+                'purpose': purpose
+            }
+        )
+        
+        return Response({
+            "detail": "OTP verified successfully",
+            "phone_token": phone_token  # Client must pass this to /register/
+        })
 
 
 class UserRegistrationView(APIView):
@@ -326,15 +315,29 @@ class UserRegistrationView(APIView):
     )
     def post(self, request):
         """Handle user registration with phone verification."""
-        # Check if phone is verified
-        if not request.session.get('phone_verified'):
+        # Validate the phone_token issued by OTPVerifyView.
+        # This replaces the old broken session-based check.
+        phone_token = request.data.get('phone_token')
+        if not phone_token:
             return Response(
-                {"detail": "Phone number not verified"},
+                {"detail": "Phone number not verified. Please complete OTP verification first."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get the verified phone from session
-        phone_number = request.session.get('verified_phone')
+        try:
+            # Token is valid for 10 minutes (600 seconds)
+            token_data = signing.loads(phone_token, salt='otp_verified', max_age=600)
+            phone_number = token_data['phone_number']
+        except signing.SignatureExpired:
+            return Response(
+                {"detail": "Verification token has expired. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except signing.BadSignature:
+            return Response(
+                {"detail": "Invalid verification token."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Add phone_number to request data if not provided
         request_data = request.data.copy()
@@ -371,12 +374,6 @@ class UserRegistrationView(APIView):
                         'referred_by': str(user.referred_by) if user.referred_by else None
                     }
                 )
-                
-                # Clear the verification session
-                if 'phone_verified' in request.session:
-                    del request.session['phone_verified']
-                if 'verified_phone' in request.session:
-                    del request.session['verified_phone']
                 
                 return Response({
                     "detail": "User registered successfully",

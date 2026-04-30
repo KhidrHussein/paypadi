@@ -1,5 +1,5 @@
 from django.contrib.auth import authenticate, login
-from django.http import JsonResponse
+from rest_framework.response import Response
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import api_view, permission_classes
@@ -22,13 +22,13 @@ def admin_jwt_login(request):
             # Also log the user in for the admin interface
             login(request, user)
             
-            return JsonResponse({
+            return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
             })
-        return JsonResponse(
+        return Response(
             {'error': 'Invalid credentials or not a staff user'}, 
             status=400
         )
