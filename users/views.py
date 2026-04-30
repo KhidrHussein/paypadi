@@ -1023,7 +1023,44 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        
+        # After successfully adding a payout account, try to auto-approve the driver profile
+        if response.status_code == status.HTTP_201_CREATED:
+            try:
+                # Use request.user.driver_profile instead of a generic getattr
+                driver_profile = getattr(request.user, 'driver_profile', None)
+                if driver_profile and not driver_profile.is_approved:
+                    required_fields_completed = all([
+                        bool(driver_profile.vehicle_make),
+                        bool(driver_profile.vehicle_model),
+                        bool(driver_profile.vehicle_year),
+                        bool(driver_profile.license_plate),
+                        bool(driver_profile.driver_license_number),
+                        bool(driver_profile.driver_license_expiry),
+                        bool(driver_profile.license_front),
+                        bool(driver_profile.license_back),
+                        bool(driver_profile.vehicle_registration),
+                    ])
+                    
+                    if required_fields_completed:
+                        from django.utils import timezone
+                        driver_profile.is_approved = True
+                        driver_profile.submitted_for_approval = True
+                        driver_profile.approved_at = timezone.now()
+                        driver_profile.save(update_fields=['is_approved', 'approved_at', 'submitted_for_approval'])
+                        
+                        # Log the auto-approval
+                        AuditLog.log_action(
+                            action='driver_profile_auto_approved',
+                            user=request.user,
+                            ip_address=request.META.get('REMOTE_ADDR'),
+                            user_agent=request.META.get('HTTP_USER_AGENT')
+                        )
+            except Exception as e:
+                logger.error(f"Error auto-approving driver profile: {e}")
+                
+        return response
 
     @action(detail=True, methods=['post'])
     def set_primary(self, request, pk=None):
