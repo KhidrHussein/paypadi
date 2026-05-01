@@ -51,7 +51,7 @@ class InternalTransfersTest(TestCase):
         self.sender_wallet.refresh_from_db()
         self.recipient_wallet.refresh_from_db()
         
-        self.assertEqual(self.sender_wallet.balance, Decimal('8500.00'))
+        self.assertEqual(self.sender_wallet.balance, Decimal('8495.00'))
         self.assertEqual(self.recipient_wallet.balance, Decimal('1500.00'))
         
         # Verify transaction records
@@ -82,7 +82,7 @@ class InternalTransfersTest(TestCase):
         self.sender_wallet.refresh_from_db()
         self.recipient_wallet.refresh_from_db()
         
-        self.assertEqual(self.sender_wallet.balance, Decimal('8000.00'))
+        self.assertEqual(self.sender_wallet.balance, Decimal('7995.00'))
         self.assertEqual(self.recipient_wallet.balance, Decimal('2000.00'))
 
     def test_insufficient_funds(self):

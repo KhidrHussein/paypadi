@@ -349,6 +349,7 @@ class TransferFundsView(APIView):
         if recipient_user:
             from core.models import AuditLog, Notification
             from django.utils import timezone
+            from decimal import Decimal
             
             if recipient_user == request.user:
                  return Response({
@@ -366,7 +367,10 @@ class TransferFundsView(APIView):
                     wallet = Wallet.objects.get(user=request.user)
                     recipient_wallet = Wallet.objects.get(user=recipient_user)
                     
-                    if wallet.available_balance < amount:
+                    transfer_fee = Decimal('5.00')
+                    total_deduction = amount + transfer_fee
+                    
+                    if wallet.available_balance < total_deduction:
                         return Response({
                             "status": False,
                             "message": "Insufficient balance",
@@ -375,7 +379,7 @@ class TransferFundsView(APIView):
                     
                     reference = f"TRF-{timezone.now().strftime('%Y%m%d%H%M%S')}-{request.user.id}"
                     
-                    wallet.balance -= amount
+                    wallet.balance -= total_deduction
                     wallet.save(update_fields=['balance'])
                     recipient_wallet.balance += amount
                     recipient_wallet.save(update_fields=['balance'])
@@ -387,6 +391,15 @@ class TransferFundsView(APIView):
                         reference=reference, recipient=recipient_user,
                         description=description or f"Transfer to {recipient_user.get_full_name() or recipient_user.phone_number}",
                         metadata={'recipient_phone': str(recipient_user.phone_number), 'initiated_by': str(request.user.phone_number)}
+                    )
+                    
+                    txn_fee = Transaction.objects.create(
+                        wallet=wallet, amount=transfer_fee,
+                        transaction_type=Transaction.TransactionType.FEE,
+                        status=Transaction.TransactionStatus.COMPLETED,
+                        reference=f"FEE-{reference}", recipient=None,
+                        description="Intra-transfer transaction fee",
+                        metadata={'related_transfer_reference': reference}
                     )
                     
                     txn_in = Transaction.objects.create(
