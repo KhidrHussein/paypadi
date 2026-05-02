@@ -87,11 +87,11 @@ class UserLookupView(APIView):
             
             # Prioritize virtual account number, fallback to 10-digit phone
             account_number = ten_digit_phone
-            bank_code = None
+            bank_code = 'paypadi'  # Default to internal bank code for wallet-to-wallet transfers
             if hasattr(user, 'wallet'):
                 if user.wallet.virtual_account_number:
                     account_number = user.wallet.virtual_account_number
-                bank_code = user.wallet.virtual_bank_code
+                    bank_code = user.wallet.virtual_bank_code  # Use virtual bank code if available
                 
             # Construct response
             data = {
