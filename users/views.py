@@ -1013,9 +1013,11 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
                 account_info = self._verify_bank_account(account_number, bank_code)
                 
                 # Update the request data with the verified account name
-                request.data._mutable = True
-                request.data['account_name'] = account_info['account_name']
-                request.data['is_verified'] = True
+                # Create a mutable copy of request.data
+                mutable_data = request.data.copy()
+                mutable_data['account_name'] = account_info['account_name']
+                mutable_data['is_verified'] = True
+                request.data = mutable_data
                 
             except ValidationError as e:
                 return Response(
