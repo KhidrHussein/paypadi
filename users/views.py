@@ -1012,12 +1012,12 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
                 # Verify the bank account
                 account_info = self._verify_bank_account(account_number, bank_code)
                 
-                # Update the request data with the verified account name
-                # Create a mutable copy of request.data
-                mutable_data = request.data.copy()
-                mutable_data['account_name'] = account_info['account_name']
-                mutable_data['is_verified'] = True
-                request.data = mutable_data
+                # Update the serializer data with the verified account name
+                # Override the serializer's validated_data
+                serializer = self.get_serializer()
+                serializer.initial_data = request.data.copy()
+                serializer.initial_data['account_name'] = account_info['account_name']
+                serializer.initial_data['is_verified'] = True
                 
             except ValidationError as e:
                 return Response(
