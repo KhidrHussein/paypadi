@@ -39,6 +39,13 @@ class DriverPayoutAccountSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
+        validators = [
+            UniqueTogetherValidator(
+                queryset=DriverPayoutAccount.objects.all(),
+                fields=['driver', 'account_number', 'bank_code'],
+                message='This payout account has already been added.'
+            )
+        ]
     
     def validate(self, data):
         # If it's a bank account, bank_name and bank_code are required
