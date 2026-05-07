@@ -429,7 +429,8 @@ class TransferFundsView(APIView):
                             "recipient_name": recipient_user.get_full_name() or str(recipient_user.phone_number),
                             "created_at": txn_out.created_at.isoformat(),
                             "payment_type": txn_out.transaction_type,
-                            "transaction_type": txn_out.transaction_type
+                            "transaction_type": txn_out.transaction_type,
+                            "fee_amount": str(transfer_fee)
                         }
                     })
             except Exception as e:

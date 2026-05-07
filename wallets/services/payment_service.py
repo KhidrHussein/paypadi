@@ -324,7 +324,8 @@ class PaymentService:
                     'reference': reference,
                     'created_at': transaction.created_at.isoformat(),
                     'payment_type': transaction_type,
-                    'transaction_type': transaction_type
+                    'transaction_type': transaction_type,
+                    'fee_amount': "0.00"
                 }
             }
                 
