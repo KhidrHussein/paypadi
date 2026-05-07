@@ -390,7 +390,7 @@ class TransferFundsView(APIView):
                         status=Transaction.TransactionStatus.COMPLETED,
                         reference=reference, recipient=recipient_user,
                         description=description or f"Transfer to {recipient_user.get_full_name() or recipient_user.phone_number}",
-                        metadata={'recipient_phone': str(recipient_user.phone_number), 'initiated_by': str(request.user.phone_number)}
+                        metadata={'recipient_phone': str(recipient_user.phone_number), 'initiated_by': str(request.user.phone_number), 'fee': str(transfer_fee)}
                     )
                     
                     txn_fee = Transaction.objects.create(
