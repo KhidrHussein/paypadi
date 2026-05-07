@@ -231,18 +231,23 @@ class UserDetailSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     driver_profile = DriverProfileSerializer(read_only=True)
     is_driver = serializers.SerializerMethodField()
+    total_referrals = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = [
             'id', 'phone_number', 'first_name', 'last_name', 'email', 'role',
             'is_active', 'verified_phone', 'is_driver', 'date_joined',
-            'last_login', 'profile', 'driver_profile', 'kyc_status'
+            'last_login', 'profile', 'driver_profile', 'kyc_status',
+            'referral_code', 'total_referrals'
         ]
         read_only_fields = fields
     
     def get_is_driver(self, obj):
         return obj.role == User.UserRole.DRIVER
+
+    def get_total_referrals(self, obj):
+        return obj.referrals.count()
 
 
 class ChangePasswordSerializer(serializers.Serializer):
