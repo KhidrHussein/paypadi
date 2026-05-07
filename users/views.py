@@ -1002,22 +1002,22 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
         serializer.save(driver=self.request.user)
         
     def create(self, request, *args, **kwargs):
+        # Create a mutable copy of the request data
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
         # For bank accounts, verify the account details with Paystack
-        account_type = request.data.get('account_type')
-        bank_code = request.data.get('bank_code')
-        account_number = request.data.get('account_number')
+        account_type = data.get('account_type')
+        bank_code = data.get('bank_code')
+        account_number = data.get('account_number')
         
         if account_type == 'bank_account' and bank_code and account_number:
             try:
                 # Verify the bank account
                 account_info = self._verify_bank_account(account_number, bank_code)
                 
-                # Update the serializer data with the verified account name
-                # Override the serializer's validated_data
-                serializer = self.get_serializer()
-                serializer.initial_data = request.data.copy()
-                serializer.initial_data['account_name'] = account_info['account_name']
-                serializer.initial_data['is_verified'] = True
+                # Update the data with the verified account name
+                data['account_name'] = account_info['account_name']
+                data['is_verified'] = True
                 
             except ValidationError as e:
                 return Response(
@@ -1025,7 +1025,11 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        response = super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         
         # After successfully adding a payout account, try to auto-approve the driver profile
         if response.status_code == status.HTTP_201_CREATED:
