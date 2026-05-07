@@ -15,16 +15,25 @@ class StandardizedJSONRenderer(JSONRenderer):
         if isinstance(data, dict):
             keys = set(data.keys())
             # If it already explicitly looks like our standard format
-            if 'status' in keys and ('data' in keys or 'message' in keys):
-                # Optionally ensure all 3 keys exist
-                if 'data' not in data:
-                    data['data'] = None
+            if 'status' in keys and ('data' in keys or 'message' in keys or 'error' in keys):
+                is_success = data.get('status')
+                
                 if 'message' not in data:
                     data['message'] = ""
+                    
+                if is_success:
+                    if 'data' not in data:
+                        data['data'] = None
+                    data.pop('error', None)
+                else:
+                    if 'error' not in data:
+                        data['error'] = data.pop('data', None)
+                    data.pop('data', None)
+                    
                 return super().render(data, accepted_media_type, renderer_context)
                 
         # Extract message and data
-        message = "Success" if status_value else "Error"
+        message = "Success" if status_value else "An error occurred"
         payload = data
         
         if isinstance(data, dict):
@@ -38,13 +47,17 @@ class StandardizedJSONRenderer(JSONRenderer):
             # For DRF validation errors, it's often a dict of field errors
             if not status_value and payload:
                 # If there's no explicit detail/message, it might be field errors
-                if not message or message == "Error":
+                if not message or message == "An error occurred":
                     message = "Validation Error"
 
         response_data = {
             'status': status_value,
             'message': str(message),
-            'data': payload
         }
+        
+        if status_value:
+            response_data['data'] = payload
+        else:
+            response_data['error'] = payload
 
         return super().render(response_data, accepted_media_type, renderer_context)
