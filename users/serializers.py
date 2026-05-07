@@ -29,11 +29,12 @@ class UserSerializer(serializers.ModelSerializer):
 
 class DriverPayoutAccountSerializer(serializers.ModelSerializer):
     """Serializer for driver payout accounts."""
+    driver = serializers.HiddenField(default=serializers.CurrentUserDefault())
     
     class Meta:
         model = DriverPayoutAccount
         fields = [
-            'id', 'account_type', 'account_name', 'account_number',
+            'id', 'driver', 'account_type', 'account_name', 'account_number',
             'bank_name', 'bank_code', 'is_primary', 'is_verified',
             'created_at', 'updated_at'
         ]
