@@ -1,6 +1,20 @@
 from rest_framework.renderers import JSONRenderer
 
 class StandardizedJSONRenderer(JSONRenderer):
+    def _flatten_error(self, error_data):
+        if error_data is None:
+            return None
+        if isinstance(error_data, list):
+            if len(error_data) > 0:
+                return self._flatten_error(error_data[0])
+            return None
+        if isinstance(error_data, dict):
+            if error_data:
+                first_key = next(iter(error_data))
+                return self._flatten_error(error_data[first_key])
+            return None
+        return str(error_data)
+
     def render(self, data, accepted_media_type=None, renderer_context=None):
         status_code = renderer_context['response'].status_code if renderer_context else 200
         
@@ -26,8 +40,8 @@ class StandardizedJSONRenderer(JSONRenderer):
                         data['data'] = None
                     data.pop('error', None)
                 else:
-                    if 'error' not in data:
-                        data['error'] = data.pop('data', None)
+                    error_payload = data.pop('error', data.pop('data', None))
+                    data['error'] = self._flatten_error(error_payload)
                     data.pop('data', None)
                     
                 return super().render(data, accepted_media_type, renderer_context)
@@ -58,6 +72,6 @@ class StandardizedJSONRenderer(JSONRenderer):
         if status_value:
             response_data['data'] = payload
         else:
-            response_data['error'] = payload
+            response_data['error'] = self._flatten_error(payload)
 
         return super().render(response_data, accepted_media_type, renderer_context)
