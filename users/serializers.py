@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from rest_framework.validators import UniqueValidator
+from rest_framework.validators import UniqueValidator, UniqueTogetherValidator
 from phonenumber_field.serializerfields import PhoneNumberField
 from django.contrib.auth import get_user_model
 from .models import OTP, UserProfile, DriverProfile, DriverPayoutAccount
