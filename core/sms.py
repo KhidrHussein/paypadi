@@ -30,7 +30,7 @@ def send_sms(phone_number, message):
             "from": settings.TERMII_SENDER_ID,
             "sms": message,
             "type": "plain",
-            "channel": "dnd", # Use dnd for better delivery in Nigeria
+            "channel": settings.TERMII_CHANNEL, 
             "api_key": settings.TERMII_API_KEY
         }
         

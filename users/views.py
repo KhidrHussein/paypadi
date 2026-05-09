@@ -1014,7 +1014,9 @@ class DriverPayoutAccountViewSet(viewsets.ModelViewSet):
             raise ValidationError(f"Bank account verification failed: {error_message}")
 
     def get_queryset(self):
-        # Only return payout accounts for the current user
+        # Safety check for Swagger schema generation and unauthenticated users
+        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+            return DriverPayoutAccount.objects.none()
         return self.request.user.payout_accounts.all()
 
     def perform_create(self, serializer):
