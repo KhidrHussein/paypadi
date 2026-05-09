@@ -34,16 +34,21 @@ def send_sms(phone_number, message):
             "api_key": settings.TERMII_API_KEY
         }
         
+        # Ensure the URL is correctly formed (append path if only domain is provided)
+        url = settings.TERMII_BASE_URL
+        if url and not url.endswith('/api/sms/send'):
+            url = f"{url.rstrip('/')}/api/sms/send"
+            
         logger.info(f"Attempting to send SMS via Termii to {target_phone}")
         
-        response = requests.post(settings.TERMII_BASE_URL, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
         response_data = response.json()
         
         if response.status_code == 200:
             logger.info(f"SMS sent successfully to {phone_number}. Termii ID: {response_data.get('message_id')}")
             return True
         else:
-            logger.error(f"Termii error sending SMS: {response_data}")
+            logger.error(f"Termii error sending SMS to {url}: {response_data}")
             return False
             
     except requests.exceptions.RequestException as e:

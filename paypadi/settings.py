@@ -62,7 +62,7 @@ PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')
 # Termii Configuration
 TERMII_API_KEY = os.getenv('TERMII_API_KEY')
 TERMII_SENDER_ID = os.getenv('TERMII_SENDER_ID', 'Paypadi')
-TERMII_BASE_URL = os.getenv('TERMII_BASE_URL', 'https://api.ng.termii.com/api/sms/send')
+TERMII_BASE_URL = os.getenv('TERMII_BASE_URL', 'https://v3.api.termii.com/api/sms/send')
 
 # Set the default payment gateway to Paystack
 PAYMENT_GATEWAY = 'paystack'
