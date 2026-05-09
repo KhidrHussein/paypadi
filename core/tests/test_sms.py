@@ -52,4 +52,4 @@ class SMSTestCase(TestCase):
         self.assertTrue(mock_send_sms.called)
         args, _ = mock_send_sms.call_args
         self.assertEqual(args[0], phone_number)
-        self.assertIn('Your Paypadi OTP is:', args[1])
+        self.assertIn('Your Paypadi security code is:', args[1])
