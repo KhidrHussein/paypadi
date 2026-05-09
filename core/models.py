@@ -182,7 +182,7 @@ class OTPManager:
         )
         
         # Send OTP via SMS
-        message = f"Your Paypadi verification code is: {otp_code}. Valid for {expiry_minutes} minutes."
+        message = f"Your Paypadi security code is: {otp_code}. Valid for {expiry_minutes} minutes. Use this to complete your verification."
         send_sms(phone_number, message)
         
         return otp
