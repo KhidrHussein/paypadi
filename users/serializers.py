@@ -103,6 +103,21 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         allow_blank=True,
         allow_null=True
     )
+    license_front = serializers.ImageField(
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    license_back = serializers.ImageField(
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    vehicle_registration = serializers.ImageField(
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
     
     def validate_password(self, value):
         """Validate that the password is a 6-digit number."""
@@ -126,7 +141,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = [
             'phone_number', 'password', 'first_name', 'last_name', 'email',
             'referred_by', 'role', 'vehicle_make', 'vehicle_model', 
-            'license_plate', 'driver_license_number'
+            'license_plate', 'driver_license_number', 'license_front',
+            'license_back', 'vehicle_registration'
         ]
     
     def create(self, validated_data):
@@ -138,7 +154,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'vehicle_make': validated_data.pop('vehicle_make', None),
             'vehicle_model': validated_data.pop('vehicle_model', None),
             'license_plate': validated_data.pop('license_plate', None),
-            'driver_license_number': validated_data.pop('driver_license_number', None)
+            'driver_license_number': validated_data.pop('driver_license_number', None),
+            'license_front': validated_data.pop('license_front', None),
+            'license_back': validated_data.pop('license_back', None),
+            'vehicle_registration': validated_data.pop('vehicle_registration', None)
         }
         
         referred_by_code = validated_data.pop('referred_by', None)

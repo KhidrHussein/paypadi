@@ -607,21 +607,39 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             partial=partial
         )
         
-        if user_serializer.is_valid() and profile_serializer.is_valid():
+        # Also handle driver profile if user is a driver
+        driver_serializer = None
+        if instance.role == User.UserRole.DRIVER:
+            driver_profile, _ = DriverProfile.objects.get_or_create(user=instance)
+            driver_serializer = DriverProfileSerializer(
+                driver_profile,
+                data=request.data,
+                partial=partial
+            )
+        
+        # Validate all serializers
+        is_valid = user_serializer.is_valid() and profile_serializer.is_valid()
+        if driver_serializer:
+            is_valid = is_valid and driver_serializer.is_valid()
+            
+        if is_valid:
             with transaction.atomic():
                 self.perform_update(user_serializer)
                 self.perform_update(profile_serializer)
+                if driver_serializer:
+                    self.perform_update(driver_serializer)
                 
                 # Log the profile update
+                updated_fields = list(user_serializer.validated_data.keys()) + list(profile_serializer.validated_data.keys())
+                if driver_serializer:
+                    updated_fields += list(driver_serializer.validated_data.keys())
+                
                 AuditLog.log_action(
                     action='profile_updated',
                     user=instance,
                     ip_address=request.META.get('REMOTE_ADDR'),
                     user_agent=request.META.get('HTTP_USER_AGENT'),
-                    data={
-                        'updated_fields': list(user_serializer.validated_data.keys()) +
-                                       list(profile_serializer.validated_data.keys())
-                    }
+                    data={'updated_fields': updated_fields}
                 )
                 
                 return Response(UserDetailSerializer(instance).data)
@@ -631,6 +649,8 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             errors.update(user_serializer.errors)
         if profile_serializer.errors:
             errors.update(profile_serializer.errors)
+        if driver_serializer and driver_serializer.errors:
+            errors.update(driver_serializer.errors)
             
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
