@@ -72,6 +72,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name='referrals'
     )
     transaction_pin_hash = models.CharField(max_length=128, null=True, blank=True)
+    fcm_token = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        help_text="Firebase Cloud Messaging token for push notifications"
+    )
     kyc_status = models.CharField(
         max_length=10, 
         choices=[
@@ -314,3 +320,39 @@ class DriverProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.vehicle_make} {self.vehicle_model}"
+
+    def check_and_approve(self):
+        """
+        Check if the driver has completed all necessary fields and has a payout account.
+        If so, automatically approve the driver.
+        """
+        if self.is_approved:
+            return True
+
+        # Fields required for approval
+        required_fields = [
+            self.vehicle_make,
+            self.vehicle_model,
+            self.vehicle_year,
+            self.license_plate,
+            self.driver_license_number,
+            self.driver_license_expiry,
+            self.license_front,
+            self.license_back,
+            self.vehicle_registration,
+        ]
+
+        # Check if all fields are truthy (not None and not empty string)
+        fields_completed = all([bool(field) for field in required_fields])
+        
+        # Check if the driver has at least one payout account
+        has_payout_account = self.user.payout_accounts.exists()
+
+        if fields_completed and has_payout_account:
+            from django.utils import timezone
+            self.is_approved = True
+            self.submitted_for_approval = True
+            self.approved_at = timezone.now()
+            self.save(update_fields=['is_approved', 'submitted_for_approval', 'approved_at'])
+            return True
+        return False
