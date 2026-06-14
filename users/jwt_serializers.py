@@ -67,6 +67,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Add custom claims to the token
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
+        data['access_expires'] = refresh.access_token.payload.get('exp')
+        data['refresh_expires'] = refresh.payload.get('exp')
         # Include all fields from UserSerializer
         data['user'] = UserSerializer(self.user).data
         data['user']['is_driver'] = hasattr(self.user, 'driver_profile')
@@ -105,6 +107,15 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
             pass
             
         data = super().validate(attrs)
+        
+        if 'access' in data:
+            from rest_framework_simplejwt.tokens import AccessToken
+            access_token = AccessToken(data['access'])
+            data['access_expires'] = access_token.payload.get('exp')
+            
+        if 'refresh' in data:
+            new_refresh = RefreshToken(data['refresh'])
+            data['refresh_expires'] = new_refresh.payload.get('exp')
         
         # We can get the user from the refresh token payload
         # Ensure we have the refresh object (re-instantiating might fail if blacklisted, so use the one from before)

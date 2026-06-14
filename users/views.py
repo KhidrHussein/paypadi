@@ -42,6 +42,8 @@ class LoginResponseSerializer(serializers.Serializer):
     """Serializer for login response."""
     refresh = serializers.CharField(help_text="JWT refresh token")
     access = serializers.CharField(help_text="JWT access token")
+    access_expires = serializers.IntegerField(help_text="Access token expiry timestamp")
+    refresh_expires = serializers.IntegerField(help_text="Refresh token expiry timestamp")
     user = UserSerializer(help_text="Authenticated user details")
 
 
