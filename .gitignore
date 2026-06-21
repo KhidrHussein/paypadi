@@ -61,3 +61,6 @@ coverage.xml
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Firebase
+paypadi-firebase-adminsdk.json

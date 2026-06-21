@@ -65,6 +65,10 @@ TERMII_SENDER_ID = os.getenv('TERMII_SENDER_ID', 'Paypadi')
 TERMII_CHANNEL = os.getenv('TERMII_CHANNEL', 'dnd')
 TERMII_BASE_URL = os.getenv('TERMII_BASE_URL', 'https://v3.api.termii.com/api/sms/send')
 
+# Firebase Configuration
+_firebase_key = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY')
+FIREBASE_SERVICE_ACCOUNT_KEY = BASE_DIR / _firebase_key if _firebase_key else None
+
 # Set the default payment gateway to Paystack
 PAYMENT_GATEWAY = 'paystack'
 
